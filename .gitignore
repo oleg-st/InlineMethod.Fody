@@ -1,0 +1,6 @@
+nugets/
+.vs/
+bin/
+obj/
+
+*.user
