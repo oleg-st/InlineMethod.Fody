@@ -22,6 +22,7 @@ namespace InlineMethod.Fody
         private int _firstInnerVariableIndex;
         private ArgStack _argStack;
         private Instruction _firstBodyInstruction;
+        private Instruction _beforeBodyInstruction;
         private readonly List<LoadArgInfo> _firstLoadArgs;
         private int _minTargetInstructionIndex;
 
@@ -349,6 +350,8 @@ namespace InlineMethod.Fody
         private void InsertBeforeBody(Instruction instruction)
         {
             _il.InsertBefore( _firstBodyInstruction ?? _callInstruction, instruction);
+
+            _beforeBodyInstruction = instruction;
         }
 
         private bool GetInstructionFromMap(Instruction instruction, out Instruction outInstruction)
@@ -503,7 +506,7 @@ namespace InlineMethod.Fody
             // replace call target
             if (_firstBodyInstruction != null)
             {
-                _instructionMap[_callInstruction] = _firstBodyInstruction;
+                _instructionMap[_callInstruction] = _beforeBodyInstruction ?? _firstBodyInstruction;
             }
 
             FixInstructionReferences();

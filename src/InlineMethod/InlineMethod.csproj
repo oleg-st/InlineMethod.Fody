@@ -7,11 +7,12 @@
     <Authors>Oleg Stepanischev</Authors>
     <Copyright>Copyright $(Authors) $([System.DateTime]::UtcNow.ToString(yyyy))</Copyright>
     <Description>Allows inlining methods</Description>
+    <PackageId>InlineMethod.Fody</PackageId>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageOutputPath>$(SolutionDir)/../nugets</PackageOutputPath>
     <PackageProjectUrl>https://github.com/oleg-st/InlineMethod.Fody</PackageProjectUrl>
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
-    <Version>0.1</Version>
+    <Version>0.2</Version>
   </PropertyGroup>
 
   <ItemGroup>
