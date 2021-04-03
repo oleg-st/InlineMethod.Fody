@@ -49,9 +49,8 @@ namespace InlineMethod.Fody
             _parentMethod = parentMethod;
             _method = method;
             _il = _parentMethod.Body.GetILProcessor();
-            _moduleWeaver.WriteMessage($"Method {_method.Name} to {_parentMethod.Name}", MessageImportance.Normal);
+            //_moduleWeaver.WriteMessage($"Method {_method.Name} to {_parentMethod.Name}", MessageImportance.Normal);
             _pushInstructions = _callInstruction.GetArgumentPushInstructions();
-            _args = new Arg[_pushInstructions.Length];
 
             // parameters
             _parameters = new MethodParameters(_method);
@@ -60,6 +59,7 @@ namespace InlineMethod.Fody
                 throw new NotSupportedException($"The number of parameters ({_parameters.Count}) is not equal to the number of push instructions ({_pushInstructions.Length})");
             }
 
+            _args = new Arg[_pushInstructions.Length];
             _firstLoadArgs = new List<LoadArgInfo>(_parameters.Count);
         }
 
@@ -126,9 +126,11 @@ namespace InlineMethod.Fody
 
         private void CreateArgs()
         {
+            var hasCallReferences = FindCallReferences();
+
             for (var i = 0; i < _args.Length; i++)
             {
-                _args[i] = new Arg(this, i, _pushInstructions[i]);
+                _args[i] = new Arg(this, i, hasCallReferences ? null : _pushInstructions[i]);
             }
 
             _argStack = new ArgStack(_args);
@@ -350,8 +352,10 @@ namespace InlineMethod.Fody
         private void InsertBeforeBody(Instruction instruction)
         {
             _il.InsertBefore( _firstBodyInstruction ?? _callInstruction, instruction);
-
-            _beforeBodyInstruction = instruction;
+            if (_beforeBodyInstruction == null)
+            {
+                _beforeBodyInstruction = instruction;
+            }
         }
 
         private bool GetInstructionFromMap(Instruction instruction, out Instruction outInstruction)
@@ -371,10 +375,10 @@ namespace InlineMethod.Fody
             return true;
         }
 
-        private void FixInstructionReferences()
+        private void FixInstructions()
         {
             // TODO: optimize (do once per parent method)
-            // fix targets
+            // fix targets, extend instructions
             var instruction = _parentMethod.Body.Instructions.FirstOrDefault();
             while (instruction != null)
             {
@@ -400,9 +404,63 @@ namespace InlineMethod.Fody
 
                 // extend short branch to long to avoid short operand overflow, TODO: choose short / long instruction
                 OpCodeHelper.ExtendBranchOpCode(instruction);
+                // extend short variable instructions to long if needed
+                OpCodeHelper.ExtendVariableOpCode(instruction);
 
                 instruction = nextInstruction;
             }
+        }
+
+        private IEnumerable<Instruction> GetReferencedInstructions()
+        {
+            var instruction = _parentMethod.Body.Instructions.FirstOrDefault();
+            while (instruction != null)
+            {
+                var nextInstruction = instruction.Next;
+
+                if (instruction.Operand is Instruction opInstruction)
+                {
+                    yield return opInstruction;
+                }
+                else if (instruction.Operand is Instruction[] opInstructions)
+                {
+                    foreach (var innerOpInstruction in opInstructions)
+                    {
+                        yield return innerOpInstruction;
+                    }
+                }
+
+                instruction = nextInstruction;
+            }
+        }
+
+        private bool FindCallReferences()
+        {
+            if (_pushInstructions.Length == 0)
+            {
+                return false;
+            }
+
+            foreach (var opInstruction in GetReferencedInstructions())
+            {
+                // jump to call instruction
+                if (opInstruction == _callInstruction)
+                {
+                    return true;
+                }
+
+                for (var i = 1; i < _pushInstructions.Length; i++)
+                {
+                    var pushInstruction = _pushInstructions[i];
+                    // jump to push instruction (index > 0)
+                    if (pushInstruction == opInstruction)
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
         }
 
         public void Process()
@@ -504,12 +562,12 @@ namespace InlineMethod.Fody
             Remove(_callInstruction);
 
             // replace call target
-            if (_firstBodyInstruction != null)
+            if (_firstBodyInstruction != null || _beforeBodyInstruction != null)
             {
                 _instructionMap[_callInstruction] = _beforeBodyInstruction ?? _firstBodyInstruction;
             }
 
-            FixInstructionReferences();
+            FixInstructions();
         }
     }
 }

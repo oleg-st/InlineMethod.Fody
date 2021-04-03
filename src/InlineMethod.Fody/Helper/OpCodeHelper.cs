@@ -165,6 +165,29 @@ namespace InlineMethod.Fody.Helper
             }
         }
 
+        public static void ExtendVariableOpCode(Instruction instruction)
+        {
+            if (instruction.OpCode.OperandType == OperandType.ShortInlineVar &&
+                instruction.Operand is VariableDefinition variableDefinition &&
+                variableDefinition.Index > byte.MaxValue)
+            {
+                switch (instruction.OpCode.Code)
+                {
+                    case Code.Ldloc_S:
+                        instruction.OpCode = OpCodes.Ldloc;
+                        break;
+
+                    case Code.Ldloca_S:
+                        instruction.OpCode = OpCodes.Ldloca;
+                        break;
+
+                    case Code.Stloc_S:
+                        instruction.OpCode = OpCodes.Stloc;
+                        break;
+                }
+            }
+        }
+
         public static void ExtendBranchOpCode(Instruction instruction)
         {
             switch (instruction.OpCode.Code)
