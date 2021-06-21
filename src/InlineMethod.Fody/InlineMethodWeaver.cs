@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using Fody;
 using InlineMethod.Fody.Extensions;
 using InlineMethod.Fody.Helper;
 using Mono.Cecil;
@@ -126,11 +125,11 @@ namespace InlineMethod.Fody
 
         private void CreateArgs()
         {
-            var hasCallReferences = FindCallReferences();
+            FindSkipArgsReferences();
 
             for (var i = 0; i < _args.Length; i++)
             {
-                _args[i] = new Arg(this, i, hasCallReferences ? null : _pushInstructions[i]);
+                _args[i] = new Arg(this, i, _pushInstructions[i]);
             }
 
             _argStack = new ArgStack(_args);
@@ -185,7 +184,7 @@ namespace InlineMethod.Fody
                 var topArg = _inlineMethodWeaver._argStack.GetTop();
                 if (topArg != this)
                 {
-                    throw new Exception("Failed to reach argument from stack");
+                    throw new Exception($"Failed to reach argument from stack {_inlineMethodWeaver._method.Name} to {_inlineMethodWeaver._parentMethod.Name}");
                 }
 
                 _inlineMethodWeaver.InsertBeforeBody(instruction);
@@ -434,33 +433,38 @@ namespace InlineMethod.Fody
             }
         }
 
-        private bool FindCallReferences()
+        private void FindSkipArgsReferences()
         {
             if (_pushInstructions.Length == 0)
             {
-                return false;
+                return;
             }
 
+            int closestOffsetBeforeCall = -1;
             foreach (var opInstruction in GetReferencedInstructions())
             {
-                // jump to call instruction
                 if (opInstruction == _callInstruction)
                 {
-                    return true;
+                    closestOffsetBeforeCall = opInstruction.Offset;
+                    break;
                 }
 
-                for (var i = 1; i < _pushInstructions.Length; i++)
+                if (opInstruction.Offset < _callInstruction.Offset && opInstruction.Offset > closestOffsetBeforeCall)
                 {
-                    var pushInstruction = _pushInstructions[i];
-                    // jump to push instruction (index > 0)
-                    if (pushInstruction == opInstruction)
+                    closestOffsetBeforeCall = opInstruction.Offset;
+                }
+            }
+
+            if (closestOffsetBeforeCall >= 0)
+            {
+                for (var i = 0; i < _pushInstructions.Length; i++)
+                {
+                    if (_pushInstructions[i] != null && closestOffsetBeforeCall > _pushInstructions[i].Offset)
                     {
-                        return true;
+                        _pushInstructions[i] = null;
                     }
                 }
             }
-
-            return false;
         }
 
         public void Process()
