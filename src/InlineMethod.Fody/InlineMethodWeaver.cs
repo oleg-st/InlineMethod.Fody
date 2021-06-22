@@ -23,7 +23,6 @@ namespace InlineMethod.Fody
         private Instruction _firstBodyInstruction;
         private Instruction _beforeBodyInstruction;
         private readonly List<LoadArgInfo> _firstLoadArgs;
-        private int _minTargetInstructionIndex;
 
         private class LoadArgInfo
         {
@@ -144,7 +143,7 @@ namespace InlineMethod.Fody
             {
                 var loadArgIndex = loadArg.Index;
                 var arg = _args[loadArgIndex];
-                if (!arg.IsDeferred || prevIndex >= loadArgIndex || loadArg.InstructionIndex >= _minTargetInstructionIndex)
+                if (!arg.IsDeferred || prevIndex >= loadArgIndex)
                 {
                     break;
                 }
@@ -153,11 +152,47 @@ namespace InlineMethod.Fody
                 prevIndex = loadArgIndex;
             }
 
+            if (!CheckKeepStack())
+            {
+                foreach (var arg in _args)
+                {
+                    arg.KeepOnStack = false;
+                }
+            }
+
             for (var index = _args.Length - 1; index >= 0; index--)
             {
                 var arg = _args[index];
                 arg.Finish();
             }
+        }
+
+        private bool CheckKeepStack()
+        {
+            var argStack = new ArgStack(_args);
+
+            for (var index = _args.Length - 1; index >= 0; index--)
+            {
+                var arg = _args[index];
+
+                if (arg.KeepOnStack)
+                {
+                    continue;
+                }
+
+                if (!arg.HasPush)
+                {
+                    var topArg = argStack.GetTop();
+                    if (topArg != arg)
+                    {
+                        return false;
+                    }
+                }
+
+                argStack.Consume(arg);
+            }
+
+            return true;
         }
 
         private class Arg
@@ -169,6 +204,8 @@ namespace InlineMethod.Fody
             private int _usages;
             private Instruction _deferredInstruction;
             public bool KeepOnStack { get; set; }
+
+            public bool HasPush => _pushInstruction != null;
 
             public bool IsDeferred => _deferredInstruction != null;
 
@@ -479,7 +516,6 @@ namespace InlineMethod.Fody
 
             // inline body
             var instructions = _method.Body.Instructions;
-            _minTargetInstructionIndex = int.MaxValue;
             for (int instructionIndex = 0; instructionIndex < instructions.Count; instructionIndex++)
             {
                 var instruction = instructions[instructionIndex];
@@ -542,15 +578,6 @@ namespace InlineMethod.Fody
                     }
 
                     newInstruction = Instruction.Create(OpCodes.Br, _callInstruction.Next);
-                }
-
-                foreach (var target in OpCodeHelper.GetTargets(instruction))
-                {
-                    var targetIndex = instructions.IndexOf(target);
-                    if (targetIndex < _minTargetInstructionIndex)
-                    {
-                        _minTargetInstructionIndex = targetIndex;
-                    }
                 }
 
                 if (newInstruction == null)
