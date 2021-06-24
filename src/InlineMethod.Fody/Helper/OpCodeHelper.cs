@@ -316,5 +316,11 @@ namespace InlineMethod.Fody.Helper
                 }
             }
         }
+
+        public static void ReplaceInstruction(Instruction target, Instruction source)
+        {
+            target.OpCode = source.OpCode;
+            target.Operand = source.Operand;
+        }
     }
 }

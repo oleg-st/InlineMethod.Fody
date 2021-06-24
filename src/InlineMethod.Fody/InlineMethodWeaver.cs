@@ -287,12 +287,24 @@ namespace InlineMethod.Fody
             private bool CanInline => _pushInstruction != null && _variableDefinition == null && 
                                       (OpCodeHelper.IsLoadConst(_pushInstruction) || OpCodeHelper.IsLoadArg(_pushInstruction) || OpCodeHelper.IsLoadLoc(_pushInstruction));
 
+            private readonly List<Instruction> _inlinedInstructions = new List<Instruction>();
+
             private VariableDefinition GetVariableDefinition()
             {
                 if (_variableDefinition == null)
                 {
                     _variableDefinition = new VariableDefinition(_inlineMethodWeaver._parameters[_paramIndex].ParameterType);
                     _inlineMethodWeaver._parentMethod.Body.Variables.Add(_variableDefinition);
+
+                    // revert inline
+                    if (_inlinedInstructions.Count > 0)
+                    {
+                        foreach (var inlinedInstruction in _inlinedInstructions)
+                        {
+                            OpCodeHelper.ReplaceInstruction(inlinedInstruction, OpCodeHelper.CreateLoadLoc(_variableDefinition));
+                        }
+                        _inlinedInstructions.Clear();
+                    }
                 }
 
                 return _variableDefinition;
@@ -302,9 +314,7 @@ namespace InlineMethod.Fody
             {
                 if (_deferredInstruction != null)
                 {
-                    var newInstruction =  GetLdArgInstruction();
-                    _deferredInstruction.OpCode = newInstruction.OpCode;
-                    _deferredInstruction.Operand = newInstruction.Operand;
+                    OpCodeHelper.ReplaceInstruction(_deferredInstruction, GetLdArgInstruction());
                     _deferredInstruction = null;
                 }
             }
@@ -319,7 +329,9 @@ namespace InlineMethod.Fody
             {
                 if (CanInline)
                 {
-                    return OpCodeHelper.Clone(_pushInstruction);
+                    var ldArgInstruction = OpCodeHelper.Clone(_pushInstruction);
+                    _inlinedInstructions.Add(ldArgInstruction);
+                    return ldArgInstruction;
                 }
                 return OpCodeHelper.CreateLoadLoc(GetVariableDefinition());
             }
