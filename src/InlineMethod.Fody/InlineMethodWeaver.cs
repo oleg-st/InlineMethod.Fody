@@ -314,7 +314,12 @@ namespace InlineMethod.Fody
             {
                 if (_deferredInstruction != null)
                 {
-                    OpCodeHelper.ReplaceInstruction(_deferredInstruction, GetLdArgInstruction());
+                    var ldArgInstruction = GetLdArgInstruction();
+                    OpCodeHelper.ReplaceInstruction(_deferredInstruction, ldArgInstruction);
+                    if (_inlinedInstructions.Count > 0 && _inlinedInstructions[_inlinedInstructions.Count - 1] == ldArgInstruction)
+                    {
+                        _inlinedInstructions[_inlinedInstructions.Count - 1] = _deferredInstruction;
+                    }
                     _deferredInstruction = null;
                 }
             }
