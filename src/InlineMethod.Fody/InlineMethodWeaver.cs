@@ -27,12 +27,10 @@ namespace InlineMethod.Fody
         private class LoadArgInfo
         {
             public int Index { get; }
-            public int InstructionIndex { get; }
 
-            public LoadArgInfo(int index, int instructionIndex)
+            public LoadArgInfo(int index)
             {
                 Index = index;
-                InstructionIndex = instructionIndex;
             }
         }
 
@@ -433,6 +431,8 @@ namespace InlineMethod.Fody
             // TODO: optimize (do once per parent method)
             // fix targets, extend instructions
             var instruction = _parentMethod.Body.Instructions.FirstOrDefault();
+            var offset = 0;
+            var shortBranchInstructions = new List<Instruction>();
             while (instruction != null)
             {
                 var nextInstruction = instruction.Next;
@@ -455,11 +455,54 @@ namespace InlineMethod.Fody
                     }
                 }
 
-                // extend short branch to long to avoid short operand overflow, TODO: choose short / long instruction
-                OpCodeHelper.ExtendBranchOpCode(instruction);
+                if (instruction.OpCode.OperandType == OperandType.ShortInlineBrTarget)
+                {
+                    shortBranchInstructions.Add(instruction);
+                }
+
                 // extend short variable instructions to long if needed
                 OpCodeHelper.ExtendVariableOpCode(instruction);
 
+                instruction.Offset = offset;
+                offset += instruction.GetSize();
+
+                instruction = nextInstruction;
+            }
+
+            // extend short branch instructions if needed
+            bool wasExtended;
+            do
+            {
+                wasExtended = false;
+                for (var i = shortBranchInstructions.Count - 1; i >= 0; i--)
+                {
+                    var shortBranchInstruction = shortBranchInstructions[i];
+                    var target = (Instruction) shortBranchInstruction.Operand;
+                    var diff = target.Offset - shortBranchInstruction.Offset - shortBranchInstruction.GetSize();
+                    if (diff < sbyte.MinValue || diff > sbyte.MaxValue)
+                    {
+                        OpCodeHelper.ExtendBranchOpCode(shortBranchInstruction);
+                        shortBranchInstructions.RemoveAt(i);
+                        wasExtended = true;
+                    }
+                }
+
+                if (wasExtended && shortBranchInstructions.Count > 0)
+                {
+                    CalcParentMethodOffsets();
+                }
+            } while (wasExtended);
+        }
+
+        private void CalcParentMethodOffsets()
+        {
+            var instruction = _parentMethod.Body.Instructions.FirstOrDefault();
+            var offset = 0;
+            while (instruction != null)
+            {
+                var nextInstruction = instruction.Next;
+                instruction.Offset = offset;
+                offset += instruction.GetSize();
                 instruction = nextInstruction;
             }
         }
@@ -533,9 +576,8 @@ namespace InlineMethod.Fody
 
             // inline body
             var instructions = _method.Body.Instructions;
-            for (int instructionIndex = 0; instructionIndex < instructions.Count; instructionIndex++)
+            foreach (var instruction in instructions)
             {
-                var instruction = instructions[instructionIndex];
                 var nextInstruction = instruction.Next;
                 Instruction newInstruction = null;
 
@@ -549,7 +591,7 @@ namespace InlineMethod.Fody
                     {
                         if (OpCodeHelper.IsLoadArg(instruction) && arg.IsDeferred)
                         {
-                            _firstLoadArgs.Add(new LoadArgInfo(parameterDefinition.Sequence, instructionIndex));
+                            _firstLoadArgs.Add(new LoadArgInfo(parameterDefinition.Sequence));
                         }
                         else
                         {
