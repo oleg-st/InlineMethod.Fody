@@ -72,10 +72,10 @@ namespace InlineMethod.Fody
             foreach (var method in inlineMethods)
             {
                 var attr = GetInlineAttribute(method);
-                if (attr != null && method.IsPrivate)
+                if (attr != null)
                 {
                     var remove = (bool)attr.ConstructorArguments.Single().Value;
-                    if (remove)
+                    if (remove && method.IsPrivate)
                     {
                         method.DeclaringType.Methods.Remove(method);
                     }
