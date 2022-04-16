@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using Fody;
 using InlineMethod.Fody.Extensions;
 using InlineMethod.Fody.Helper;
 using Mono.Cecil;
@@ -402,7 +403,8 @@ namespace InlineMethod.Fody
 
         private void InsertBeforeBody(Instruction instruction)
         {
-            _il.InsertBefore( _firstBodyInstruction ?? _callInstruction, instruction);
+            var target = _firstBodyInstruction ?? _callInstruction;
+            _il.InsertBefore( target, instruction);
             if (_beforeBodyInstruction == null)
             {
                 _beforeBodyInstruction = instruction;
@@ -566,6 +568,7 @@ namespace InlineMethod.Fody
 
         public void Process()
         {
+            var callSequencePoint = _parentMethod.DebugInformation.HasSequencePoints ? _parentMethod.DebugInformation.GetSequencePoint(_callInstruction) : null;
             CreateVars();
             CreateArgs();
 
@@ -658,6 +661,29 @@ namespace InlineMethod.Fody
             }
 
             FixInstructions();
+
+            if (_parentMethod.DebugInformation.HasSequencePoints && _firstBodyInstruction != null && callSequencePoint != null)
+            {
+                var sequencePoints = _parentMethod.DebugInformation.SequencePoints;
+                int indexOf = sequencePoints.Count;
+                for (var i = 0; i < sequencePoints.Count; i++)
+                {
+                    if (sequencePoints[i].Offset >= _firstBodyInstruction.Offset)
+                    {
+                        indexOf = i;
+                        break;
+                    }
+                }
+
+                sequencePoints.Insert(indexOf,
+                    new SequencePoint(_firstBodyInstruction, callSequencePoint.Document)
+                    {
+                        StartLine = callSequencePoint.StartLine,
+                        StartColumn = callSequencePoint.StartColumn,
+                        EndLine = callSequencePoint.EndLine,
+                        EndColumn = callSequencePoint.EndColumn
+                    });
+            }
         }
     }
 }
