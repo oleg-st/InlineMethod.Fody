@@ -404,6 +404,7 @@ namespace InlineMethod.Fody
         private void InsertBeforeBody(Instruction instruction)
         {
             var target = _firstBodyInstruction ?? _callInstruction;
+            _instructionMap[target] = instruction;
             _il.InsertBefore( target, instruction);
             if (_beforeBodyInstruction == null)
             {
