@@ -4,6 +4,7 @@ using System.Linq;
 using Fody;
 using InlineMethod.Fody.Extensions;
 using InlineMethod.Fody.Helper;
+using InlineMethod.Fody.Helper.Cecil;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
@@ -38,6 +39,8 @@ namespace InlineMethod.Fody
         private readonly Dictionary<Instruction, Instruction> _instructionMap =
             new Dictionary<Instruction, Instruction>();
 
+        private readonly TypeResolver _typeResolver;
+
         public InlineMethodWeaver(ModuleWeaver moduleWeaver, Instruction callInstruction, MethodDefinition parentMethod,
             MethodDefinition method)
         {
@@ -58,6 +61,11 @@ namespace InlineMethod.Fody
 
             _args = new Arg[_pushInstructions.Length];
             _firstLoadArgs = new List<LoadArgInfo>(_parameters.Count);
+
+            _typeResolver = _callInstruction.Operand is MethodReference methodCallReference &&
+                           methodCallReference is GenericInstanceMethod genericInstanceMethod
+                ? new TypeResolver(genericInstanceMethod)
+                : null;
         }
 
         public class MethodParameters
@@ -376,7 +384,9 @@ namespace InlineMethod.Fody
             // add inner variables to parent
             foreach (var var in _method.Body.Variables)
             {
-                variables.Add(new VariableDefinition(var.VariableType));
+                variables.Add(new VariableDefinition(_typeResolver != null
+                    ? _typeResolver.ResolveVariableType(_method, var)
+                    : var.VariableType));
             }
         }
 
@@ -641,6 +651,18 @@ namespace InlineMethod.Fody
                     }
 
                     newInstruction = Instruction.Create(OpCodes.Br, _callInstruction.Next);
+                }
+
+                // resolve generic calls
+                if (_typeResolver != null && instruction.Operand is MethodReference calledMethod && calledMethod.ContainsGenericParameter)
+                {
+                    newInstruction = Instruction.Create(instruction.OpCode, _typeResolver.Resolve(calledMethod));
+                }
+
+                // resolve generic types
+                if (_typeResolver != null && instruction.Operand is TypeReference typeReference)
+                {
+                    newInstruction = Instruction.Create(instruction.OpCode, _typeResolver.Resolve(typeReference));
                 }
 
                 if (newInstruction == null)
