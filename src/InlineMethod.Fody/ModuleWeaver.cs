@@ -74,8 +74,8 @@ namespace InlineMethod.Fody
                 var attr = GetInlineAttribute(method);
                 if (attr != null)
                 {
-                    var remove = (bool)attr.ConstructorArguments.Single().Value;
-                    if (remove && method.IsPrivate)
+                    var behavior = (int)attr.ConstructorArguments.Single().Value;
+                    if (behavior > 0 && (behavior == 2 || method.IsPrivate))
                     {
                         method.DeclaringType.Methods.Remove(method);
                     }

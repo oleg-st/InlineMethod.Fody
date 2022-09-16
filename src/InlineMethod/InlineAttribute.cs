@@ -9,17 +9,17 @@ namespace InlineMethod
     public class InlineAttribute : Attribute
     {
         /// <summary>
-        /// Remove method after inline (if private)
+        /// InlineMethod behavior
         /// </summary>
-        public bool Remove { get; }
+        public InlineBehavior Behavior { get; }
 
         /// <summary>
         /// Initialize a new instance
         /// </summary>
-        /// <param name="remove"></param>
-        public InlineAttribute(bool remove = true)
+        /// <param name="behavior"></param>
+        public InlineAttribute(InlineBehavior behavior = InlineBehavior.RemovePrivate)
         {
-            Remove = remove;
+            Behavior = behavior;
         }
     }
 }
