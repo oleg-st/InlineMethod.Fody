@@ -3,7 +3,7 @@
     /// <summary>
     /// InlineMethod behavior
     /// </summary>
-    public enum InlineBehavior
+    public enum InlineBehavior : int
     {
         /// <summary>
         /// Keep method after inline
