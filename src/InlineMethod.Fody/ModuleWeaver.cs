@@ -74,7 +74,13 @@ namespace InlineMethod.Fody
                 var attr = GetInlineAttribute(method);
                 if (attr != null)
                 {
-                    var behavior = (InlineBehavior)attr.ConstructorArguments.Single().Value;
+                    var value = attr.ConstructorArguments.Single().Value;
+                    if (value is bool boolValue)
+                    {
+                        value = boolValue ? InlineBehavior.RemovePrivate : InlineBehavior.Keep;
+                    }
+
+                    var behavior = (InlineBehavior)value;
                     if ((behavior == InlineBehavior.RemovePrivate && method.IsPrivate) ||
                         behavior == InlineBehavior.Remove)
                     {

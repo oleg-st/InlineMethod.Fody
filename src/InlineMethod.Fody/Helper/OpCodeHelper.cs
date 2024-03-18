@@ -255,6 +255,9 @@ namespace InlineMethod.Fody.Helper
                    code == Code.Ldloca_S;
         }
 
+        public static bool IsLoadFlda(Instruction instruction) 
+            => instruction.OpCode.Code == Code.Ldflda;
+
         public static bool IsStoreLoc(Instruction instruction)
         {
             var code = instruction.OpCode.Code;
@@ -275,6 +278,44 @@ namespace InlineMethod.Fody.Helper
                    code == Code.Ldarg_2 ||
                    code == Code.Ldarg_3 ||
                    code == Code.Ldarg_S;
+        }
+
+        public static bool IsConv(Instruction instruction)
+        {
+            var code = instruction.OpCode.Code;
+            return code == Code.Conv_I ||
+                   code == Code.Conv_I1 ||
+                   code == Code.Conv_I2 ||
+                   code == Code.Conv_I4 ||
+                   code == Code.Conv_I8 ||
+                   code == Code.Conv_U ||
+                   code == Code.Conv_U1 ||
+                   code == Code.Conv_U2 ||
+                   code == Code.Conv_U4 ||
+                   code == Code.Conv_U8 ||
+                   code == Code.Conv_R4 ||
+                   code == Code.Conv_R8 ||
+                   code == Code.Conv_R_Un ||
+                   code == Code.Conv_Ovf_I1_Un ||
+                   code == Code.Conv_Ovf_I2_Un ||
+                   code == Code.Conv_Ovf_I4_Un ||
+                   code == Code.Conv_Ovf_I8_Un ||
+                   code == Code.Conv_Ovf_U1_Un ||
+                   code == Code.Conv_Ovf_U2_Un ||
+                   code == Code.Conv_Ovf_U4_Un ||
+                   code == Code.Conv_Ovf_U8_Un ||
+                   code == Code.Conv_Ovf_I_Un ||
+                   code == Code.Conv_Ovf_U_Un ||
+                   code == Code.Conv_Ovf_I1 ||
+                   code == Code.Conv_Ovf_I2 ||
+                   code == Code.Conv_Ovf_I4 ||
+                   code == Code.Conv_Ovf_I8 ||
+                   code == Code.Conv_Ovf_U1 ||
+                   code == Code.Conv_Ovf_U2 ||
+                   code == Code.Conv_Ovf_U4 ||
+                   code == Code.Conv_Ovf_U8 ||
+                   code == Code.Conv_Ovf_I ||
+                   code == Code.Conv_Ovf_U;
         }
 
         public static bool IsLoadArgA(Instruction instruction) =>
@@ -317,10 +358,18 @@ namespace InlineMethod.Fody.Helper
             }
         }
 
+        public static bool HasTargets(Instruction instruction) => instruction.Operand is Instruction || instruction.Operand is Instruction[];
+
         public static void ReplaceInstruction(Instruction target, Instruction source)
         {
             target.OpCode = source.OpCode;
             target.Operand = source.Operand;
         }
+
+        public static bool IsSizeOf(Instruction instruction)
+            => instruction.OpCode.Code == Code.Sizeof;
+
+        public static bool IsLoadFld(Instruction instruction)
+            => instruction.OpCode.Code == Code.Ldfld;
     }
 }
