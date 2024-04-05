@@ -637,10 +637,11 @@ namespace InlineMethod.Fody
                     }
                 }
 
-                if (instruction.OpCode.Code != Code.Ret)
+                if (isInLoadArgs && instruction.OpCode.Code != Code.Ret)
                 {
-                    stackDepth -= instruction.GetPopCount();
-                    if (isInLoadArgs && instruction.GetPopCount() > 0)
+                    var popCount = instruction.GetPopCount();
+                    stackDepth -= popCount;
+                    if (popCount > 0)
                     {
                         var last = firstLoadArgs.LastOrDefault();
                         if (last != null)
