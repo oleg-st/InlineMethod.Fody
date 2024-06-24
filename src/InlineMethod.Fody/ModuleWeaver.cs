@@ -74,7 +74,7 @@ namespace InlineMethod.Fody
                 var attr = GetInlineAttribute(method);
                 if (attr != null)
                 {
-                    var value = attr.ConstructorArguments.Single().Value;
+                    var value = attr.ConstructorArguments.First().Value;
                     if (value is bool boolValue)
                     {
                         value = boolValue ? InlineBehavior.RemovePrivate : InlineBehavior.Keep;
@@ -88,8 +88,12 @@ namespace InlineMethod.Fody
                     }
                     else
                     {
+                        var export = (bool)(attr.ConstructorArguments.Skip(1).FirstOrDefault().Value ?? false);
                         // consume attribute
-                        method.CustomAttributes.Remove(attr);
+                        if (!export)
+                        {
+                            method.CustomAttributes.Remove(attr);
+                        }
                     }
                 }
             }

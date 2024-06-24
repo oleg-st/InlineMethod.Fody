@@ -14,12 +14,19 @@ namespace InlineMethod
         public InlineBehavior Behavior { get; }
 
         /// <summary>
+        /// Export attribute
+        /// </summary>
+        public bool Export { get; }
+
+        /// <summary>
         /// Initialize a new instance
         /// </summary>
         /// <param name="behavior"></param>
-        public InlineAttribute(InlineBehavior behavior = InlineBehavior.RemovePrivate)
+        /// <param name="export"></param>
+        public InlineAttribute(InlineBehavior behavior = InlineBehavior.RemovePrivate, bool export = false)
         {
             Behavior = behavior;
+            Export = export;
         }
     }
 }

@@ -233,6 +233,20 @@ namespace InlineMethod.Fody
             while (instruction != null)
             {
                 var nextInstruction = instruction.Next;
+                if (instruction.Operand is FieldReference opFieldReference)
+                {
+                    instruction.Operand = _moduleWeaver.ModuleDefinition.ImportReference(opFieldReference);
+                }
+
+                if (instruction.Operand is MethodReference opMethodReference)
+                {
+                    instruction.Operand = _moduleWeaver.ModuleDefinition.ImportReference(opMethodReference);
+                }
+
+                if (instruction.Operand is TypeReference opTypeReference)
+                {
+                    instruction.Operand = _moduleWeaver.ModuleDefinition.ImportReference(opTypeReference);
+                }
 
                 if (instruction.Operand is Instruction opInstruction)
                 {
