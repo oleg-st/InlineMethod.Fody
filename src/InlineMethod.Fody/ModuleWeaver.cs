@@ -40,7 +40,7 @@ namespace InlineMethod.Fody
             while (instruction != null)
             {
                 var nextInstruction = instruction.Next;
-                if (instruction.OpCode.Code == Code.Call)
+                if (instruction.OpCode.Code == Code.Call || instruction.OpCode.Code == Code.Callvirt)
                 {
                     ProcessCallInstruction(instruction, method);
                 }
