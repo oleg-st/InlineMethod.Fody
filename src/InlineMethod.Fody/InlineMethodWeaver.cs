@@ -235,17 +235,17 @@ namespace InlineMethod.Fody
                 var nextInstruction = instruction.Next;
                 if (instruction.Operand is FieldReference opFieldReference)
                 {
-                    instruction.Operand = _moduleWeaver.ModuleDefinition.ImportReference(opFieldReference);
+                    instruction.Operand = _moduleWeaver.ModuleDefinition.ImportReference(opFieldReference, _parentMethod);
                 }
 
                 if (instruction.Operand is MethodReference opMethodReference)
                 {
-                    instruction.Operand = _moduleWeaver.ModuleDefinition.ImportReference(opMethodReference);
+                    instruction.Operand = _moduleWeaver.ModuleDefinition.ImportReference(opMethodReference, _parentMethod);
                 }
 
                 if (instruction.Operand is TypeReference opTypeReference)
                 {
-                    instruction.Operand = _moduleWeaver.ModuleDefinition.ImportReference(opTypeReference);
+                    instruction.Operand = _moduleWeaver.ModuleDefinition.ImportReference(opTypeReference, _parentMethod);
                 }
 
                 if (instruction.Operand is Instruction opInstruction)
@@ -794,6 +794,12 @@ namespace InlineMethod.Fody
                 if (_typeResolver != null && instruction.Operand is TypeReference typeReference)
                 {
                     newInstruction = Instruction.Create(instruction.OpCode, _typeResolver.Resolve(typeReference));
+                }
+
+                // resolve generic fields
+                if (_typeResolver != null && instruction.Operand is FieldReference fieldReference)
+                {
+                    newInstruction = Instruction.Create(instruction.OpCode, _typeResolver.Resolve(fieldReference));
                 }
 
                 if (newInstruction == null)
