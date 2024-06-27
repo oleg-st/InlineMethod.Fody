@@ -233,21 +233,6 @@ namespace InlineMethod.Fody
             while (instruction != null)
             {
                 var nextInstruction = instruction.Next;
-                if (instruction.Operand is FieldReference opFieldReference)
-                {
-                    instruction.Operand = _moduleWeaver.ModuleDefinition.ImportReference(opFieldReference, _parentMethod);
-                }
-
-                if (instruction.Operand is MethodReference opMethodReference)
-                {
-                    instruction.Operand = _moduleWeaver.ModuleDefinition.ImportReference(opMethodReference, _parentMethod);
-                }
-
-                if (instruction.Operand is TypeReference opTypeReference)
-                {
-                    instruction.Operand = _moduleWeaver.ModuleDefinition.ImportReference(opTypeReference, _parentMethod);
-                }
-
                 if (instruction.Operand is Instruction opInstruction)
                 {
                     if (GetInstructionFromMap(opInstruction, out var newInstruction))
@@ -784,27 +769,41 @@ namespace InlineMethod.Fody
                     newInstruction = Instruction.Create(OpCodes.Br, _callInstruction.Next);
                 }
 
-                // resolve generic calls
-                if (_typeResolver != null && instruction.Operand is MethodReference calledMethod && calledMethod.ContainsGenericParameter)
-                {
-                    newInstruction = Instruction.Create(instruction.OpCode, _typeResolver.Resolve(calledMethod));
-                }
-
-                // resolve generic types
-                if (_typeResolver != null && instruction.Operand is TypeReference typeReference)
-                {
-                    newInstruction = Instruction.Create(instruction.OpCode, _typeResolver.Resolve(typeReference));
-                }
-
-                // resolve generic fields
-                if (_typeResolver != null && instruction.Operand is FieldReference fieldReference)
-                {
-                    newInstruction = Instruction.Create(instruction.OpCode, _typeResolver.Resolve(fieldReference));
-                }
-
                 if (newInstruction == null)
                 {
                     newInstruction = OpCodeHelper.Clone(instruction);
+                }
+
+
+                // import references / resolve generics
+                if (newInstruction.Operand is FieldReference opFieldReference)
+                {
+                    if (_typeResolver != null)
+                    {
+                        opFieldReference = _typeResolver.Resolve(opFieldReference);
+                    }
+
+                    newInstruction.Operand = _moduleWeaver.ModuleDefinition.ImportReference(opFieldReference, _parentMethod);
+                }
+
+                if (newInstruction.Operand is MethodReference opMethodReference)
+                {
+                    if (_typeResolver != null && opMethodReference.ContainsGenericParameter)
+                    {
+                        opMethodReference = _typeResolver.Resolve(opMethodReference);
+                    }
+
+                    newInstruction.Operand = _moduleWeaver.ModuleDefinition.ImportReference(opMethodReference, _parentMethod);
+                }
+
+                if (newInstruction.Operand is TypeReference opTypeReference)
+                {
+                    if (_typeResolver != null)
+                    {
+                        opTypeReference = _typeResolver.Resolve(opTypeReference);
+                    }
+
+                    newInstruction.Operand = _moduleWeaver.ModuleDefinition.ImportReference(opTypeReference, _parentMethod);
                 }
 
                 _instructionMap[instruction] = newInstruction;
