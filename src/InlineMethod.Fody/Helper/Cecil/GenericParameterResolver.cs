@@ -1,4 +1,5 @@
-﻿using System;
+﻿#nullable disable
+using System;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 

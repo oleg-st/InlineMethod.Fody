@@ -8,7 +8,7 @@ namespace InlineMethod.Fody.Helper
 {
     internal static class OpCodeHelper
     {
-        public static ParameterDefinition GetArgParameterDefinition(Instruction instruction,
+        public static ParameterDefinition? GetArgParameterDefinition(Instruction instruction,
             InlineMethodWeaver.MethodParameters parameters)
         {
             switch (instruction.OpCode.Code)
@@ -32,7 +32,7 @@ namespace InlineMethod.Fody.Helper
             return null;
         }
 
-        public static VariableDefinition GetLocVariableDefinition(Instruction instruction,
+        public static VariableDefinition? GetLocVariableDefinition(Instruction instruction,
             Collection<VariableDefinition> variables)
         {
             switch (instruction.OpCode.Code)

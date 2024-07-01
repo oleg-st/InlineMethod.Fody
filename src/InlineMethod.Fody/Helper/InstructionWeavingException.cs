@@ -1,16 +1,9 @@
 ﻿using Fody;
 using Mono.Cecil.Cil;
 
-namespace InlineMethod.Fody.Helper
-{
-    internal class InstructionWeavingException : WeavingException
-    {
-        public Instruction Instruction { get; }
+namespace InlineMethod.Fody.Helper;
 
-        public InstructionWeavingException(Instruction instruction, string message)
-            : base(message)
-        {
-            Instruction = instruction;
-        }
-    }
+internal class InstructionWeavingException(Instruction instruction, string message) : WeavingException(message)
+{
+    public Instruction Instruction { get; } = instruction;
 }

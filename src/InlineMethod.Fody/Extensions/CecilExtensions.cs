@@ -1,5 +1,4 @@
-﻿using System;
-using InlineMethod.Fody.Helper;
+﻿using InlineMethod.Fody.Helper;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
@@ -7,7 +6,7 @@ namespace InlineMethod.Fody.Extensions
 {
     internal static class CecilExtensions
     {
-        public static Instruction[] GetArgumentPushInstructions(this Instruction instruction)
+        public static Instruction?[] GetArgumentPushInstructions(this Instruction instruction)
         {
             if (instruction.OpCode.FlowControl != FlowControl.Call)
                 throw new InstructionWeavingException(instruction, "Expected a call instruction");
@@ -16,9 +15,9 @@ namespace InlineMethod.Fody.Extensions
             var argCount = GetArgCount(instruction.OpCode, method);
 
             if (argCount == 0)
-                return Array.Empty<Instruction>();
+                return [];
 
-            var result = new Instruction[argCount];
+            var result = new Instruction?[argCount];
             var currentInstruction = instruction.Previous;
 
             for (var paramIndex = result.Length - 1; paramIndex >= 0; --paramIndex)
@@ -27,7 +26,7 @@ namespace InlineMethod.Fody.Extensions
             return result;
         }
 
-        private static Instruction BackwardScanPush(ref Instruction currentInstruction)
+        private static Instruction? BackwardScanPush(ref Instruction? currentInstruction)
         {
             if (currentInstruction == null)
             {
@@ -35,7 +34,7 @@ namespace InlineMethod.Fody.Extensions
             }
 
             var startInstruction = currentInstruction;
-            Instruction result = null;
+            Instruction? result = null;
             var stackToConsume = 1;
 
             while (stackToConsume > 0)
@@ -81,7 +80,7 @@ namespace InlineMethod.Fody.Extensions
         {
             var argCount = method.Parameters.Count;
 
-            if (method.HasThis && !method.ExplicitThis && opCode.Code != Code.Newobj)
+            if (method is {HasThis: true, ExplicitThis: false} && opCode.Code != Code.Newobj)
                 ++argCount;
 
             if (opCode.Code == Code.Calli)
