@@ -2,7 +2,7 @@
 
 namespace InlineMethod.Tests.AssemblyToProcess;
 
-class SimpleGeneric
+class SimpleGenericMethod
 {
     [InlineMethod.Inline]
     private Type Callee<T>()

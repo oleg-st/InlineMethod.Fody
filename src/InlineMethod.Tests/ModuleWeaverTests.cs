@@ -100,9 +100,16 @@ public class ModuleWeaverTests(ITestOutputHelper testOutputHelper)
     }
 
     [Fact]
-    public void SimpleGeneric()
+    public void SimpleGenericMethod()
     {
-        var type = ModuleDefinition.GetType($"{Namespace}.SimpleGeneric");
+        var type = ModuleDefinition.GetType($"{Namespace}.SimpleGenericMethod");
+        CheckSimpleClass(type);
+    }
+
+    [Fact]
+    public void SimpleGenericField()
+    {
+        var type = ModuleDefinition.GetType($"{Namespace}.SimpleGenericField");
         CheckSimpleClass(type);
     }
 }
