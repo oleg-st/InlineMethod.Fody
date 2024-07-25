@@ -112,4 +112,81 @@ public class ModuleWeaverTests(ITestOutputHelper testOutputHelper)
         var type = ModuleDefinition.GetType($"{Namespace}.SimpleGenericField");
         CheckSimpleClass(type);
     }
+
+    [Fact]
+    public void FoldBeqTrue()
+    {
+        var type = ModuleDefinition.GetType($"{Namespace}.FoldBeqTrue");
+        CheckSimpleClass(type);
+    }
+
+    [Fact]
+    public void FoldBeqFalse()
+    {
+        var type = ModuleDefinition.GetType($"{Namespace}.FoldBeqFalse");
+        CheckSimpleClass(type);
+    }
+
+    [Fact]
+    public void FoldBrTrue()
+    {
+        var type = ModuleDefinition.GetType($"{Namespace}.FoldBrTrue");
+        CheckSimpleClass(type);
+    }
+
+    [Fact]
+    public void FoldBrFalse()
+    {
+        var type = ModuleDefinition.GetType($"{Namespace}.FoldBrFalse");
+        CheckSimpleClass(type);
+    }
+
+    [Fact]
+    public void FoldBgtFalse()
+    {
+        var type = ModuleDefinition.GetType($"{Namespace}.FoldBgtFalse");
+        CheckSimpleClass(type);
+    }
+
+    [Fact]
+    public void FoldBgtUnFalse()
+    {
+        var type = ModuleDefinition.GetType($"{Namespace}.FoldBgtUnFalse");
+        CheckSimpleClass(type);
+    }
+
+    [Fact]
+    public void FoldFoldBgtMixed()
+    {
+        var type = ModuleDefinition.GetType($"{Namespace}.FoldFoldBgtMixed");
+        CheckSimpleClass(type);
+    }
+
+    [Fact]
+    public void FoldComplex()
+    {
+        var type = ModuleDefinition.GetType($"{Namespace}.FoldComplex");
+        CheckSimpleClass(type);
+    }
+
+    [Fact]
+    public void FoldSwitch1()
+    {
+        var type = ModuleDefinition.GetType($"{Namespace}.FoldSwitch1");
+        CheckSimpleClass(type);
+    }
+
+    [Fact]
+    public void FoldSwitch2()
+    {
+        var type = ModuleDefinition.GetType($"{Namespace}.FoldSwitch2");
+        CheckSimpleClass(type);
+    }
+
+    [Fact]
+    public void FoldDeep()
+    {
+        var type = ModuleDefinition.GetType($"{Namespace}.FoldDeep");
+        CheckSimpleClass(type);
+    }
 }

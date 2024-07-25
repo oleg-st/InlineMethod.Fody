@@ -26,6 +26,25 @@ namespace InlineMethod.Fody.Extensions
             return result;
         }
 
+        public static Instruction? GetSinglePushInstruction(this Instruction instruction)
+        {
+            var currentInstruction = instruction.Previous;
+            return BackwardScanPush(ref currentInstruction);
+        }
+
+        public static (Instruction?, Instruction?) GetTwoPushInstructions(this Instruction instruction)
+        {
+            var currentInstruction = instruction.Previous;
+            var second = BackwardScanPush(ref currentInstruction);
+            if (second == null)
+            {
+                return (null, null);
+            }
+
+            var first = BackwardScanPush(ref currentInstruction);
+            return (first, second);
+        }
+
         private static Instruction? BackwardScanPush(ref Instruction? currentInstruction)
         {
             if (currentInstruction == null)

@@ -4,7 +4,7 @@ namespace InlineMethod.Tests.AssemblyToProcess;
 
 class SimpleGenericMethod
 {
-    [InlineMethod.Inline]
+    [Inline]
     private Type Callee<T>()
     {
         return typeof(T);

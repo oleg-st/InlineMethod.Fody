@@ -1,20 +1,20 @@
 ﻿namespace InlineMethod.Tests.AssemblyToProcess;
 
-class SimpleRemovePrivate
+class FoldBeqFalse
 {
-    [Inline(InlineBehavior.RemovePrivate)]
+    [Inline]
     private int Callee(int x)
     {
-        return x;
+        return x == 555 ? 1 : 2;
     }
 
     public int Caller(int y)
     {
-        return Callee(555 + y);
+        return Callee(666);
     }
 
     public int Inlined(int y)
     {
-        return 555 + y;
+        return 2;
     }
 }

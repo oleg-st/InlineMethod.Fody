@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using InlineMethod.Fody.Extensions;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 using Mono.Collections.Generic;
@@ -371,5 +372,32 @@ namespace InlineMethod.Fody.Helper
 
         public static bool IsLoadFld(Instruction instruction)
             => instruction.OpCode.Code == Code.Ldfld;
+
+        public static List<Instruction> GetAllPushInstructions(Instruction? pushInstruction)
+        {
+            if (pushInstruction == null)
+            {
+                return [];
+            }
+
+            var instructions = new List<Instruction>();
+            var depth = 0;
+            var instruction = pushInstruction;
+            do
+            {
+                instructions.Insert(0, instruction);
+
+                depth += instruction.GetPushCount();
+                depth -= instruction.GetPopCount();
+
+                instruction = instruction.Previous;
+            } while (depth != 1);
+
+            return instructions;
+        }
+
+        public static bool IsConditionalBranch(Instruction instruction)
+            => instruction.OpCode.FlowControl == FlowControl.Cond_Branch;
+
     }
 }

@@ -9,7 +9,7 @@ class SimpleGenericField
         public static readonly IEqualityComparer<T> Comparer = EqualityComparer<T>.Default;
     }
 
-    [InlineMethod.Inline]
+    [Inline]
     private IEqualityComparer<T> Callee<T>()
     {
         return Helper<T>.Comparer;

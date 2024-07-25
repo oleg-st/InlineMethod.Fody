@@ -2,7 +2,7 @@
 
 class SimpleKeep
 {
-    [InlineMethod.Inline(InlineBehavior.Keep)]
+    [Inline(InlineBehavior.Keep)]
     private int Callee(int x, int y)
     {
         return x - y;

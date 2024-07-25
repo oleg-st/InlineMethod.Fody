@@ -2,7 +2,7 @@
 
 class SimpleRemove
 {
-    [InlineMethod.Inline(InlineBehavior.Remove)]
+    [Inline(InlineBehavior.Remove)]
     public int Callee(int x)
     {
         return x;

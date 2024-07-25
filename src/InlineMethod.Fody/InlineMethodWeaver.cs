@@ -5,6 +5,7 @@ using System.Linq;
 using InlineMethod.Fody.Extensions;
 using InlineMethod.Fody.Helper;
 using InlineMethod.Fody.Helper.Cecil;
+using InlineMethod.Fody.Helper.Eval;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
@@ -171,6 +172,11 @@ public class InlineMethodWeaver
 
     private void Remove(Instruction instruction)
     {
+        if (_firstBodyInstruction == instruction)
+        {
+            _firstBodyInstruction = instruction.Next;
+        }
+
         _instructionMap[instruction] = instruction.Next;
         _il.Remove(instruction);
     }
@@ -209,6 +215,221 @@ public class InlineMethodWeaver
 
         outInstruction = newInstruction;
         return true;
+    }
+
+    private Instruction GetMappedInstruction(Instruction instruction) => 
+        GetInstructionFromMap(instruction, out var newInstruction) ? newInstruction : instruction;
+
+    private IEnumerable<Instruction> GetInstructionTargets(Instruction instruction)
+    {
+        return instruction.Operand switch
+        {
+            Instruction targetInstruction => [GetMappedInstruction(targetInstruction)],
+            Instruction[] targetInstructions => targetInstructions.Select(GetMappedInstruction),
+            _ => []
+        };
+    }
+
+    private IEnumerable<Instruction> GetInstructionNext(Instruction instruction)
+    {
+        if (instruction.OpCode.Code == Code.Jmp)
+        {
+            return [];
+        }
+
+        return instruction.OpCode.FlowControl switch
+        {
+            FlowControl.Branch => GetInstructionTargets(instruction),
+            FlowControl.Cond_Branch => [..GetInstructionTargets(instruction), instruction.Next],
+            FlowControl.Next or FlowControl.Call or FlowControl.Meta or FlowControl.Break => [instruction.Next],
+            // throw, return
+            _ => []
+        };
+    }
+
+    private void RemoveUnreachableInstructions(Instruction outer)
+    {
+        if (_firstBodyInstruction == null)
+        {
+            return;
+        }
+
+        var instruction = _firstBodyInstruction;
+        // find reachable
+        var reachableSet = new HashSet<Instruction>();
+        AddReachable(instruction);
+        // remove unreachable
+        while (instruction != null && instruction != outer)
+        {
+            var nextInstruction = instruction.Next;
+            if (!reachableSet.Contains(instruction))
+            {
+                Remove(instruction);
+            }
+
+            instruction = nextInstruction;
+        }
+
+        void AddReachable(Instruction i)
+        {
+            reachableSet.Add(i);
+            foreach (var next in GetInstructionNext(i))
+            {
+                if (!reachableSet.Contains(next) && next != outer)
+                {
+                    AddReachable(next);
+                }
+            }
+        }
+    }
+
+    private void RemoveNopBranchInstructions(Instruction outer)
+    {
+        var instruction = _firstBodyInstruction;
+        while (instruction != null && instruction != outer)
+        {
+            var nextInstruction = instruction.Next;
+            if (instruction.OpCode.Code is Code.Br or Code.Br_S)
+            {
+                var target = GetMappedInstruction((Instruction) instruction.Operand);
+                if (target == nextInstruction)
+                {
+                    Remove(instruction);
+                }
+            }
+
+            instruction = nextInstruction;
+        }
+    }
+
+    private void RemoveAllPush(Instruction instruction)
+    {
+        foreach (var i in OpCodeHelper.GetAllPushInstructions(instruction))
+        {
+            Remove(i);
+        }
+    }
+
+    // no targets to any instruction except first
+    private bool IsSingleFlow(HashSet<Instruction> targets, IEnumerable<Instruction> instructions) =>
+        !instructions.Skip(1).Any(targets.Contains);
+
+    private bool ConvertConstantConditionalBranches(Instruction outer, HashSet<Instruction> targets)
+    {
+        var converted = false;
+        var instruction = _firstBodyInstruction;
+        while (instruction != null && instruction != outer)
+        {
+            var nextInstruction = instruction.Next;
+            if (instruction.OpCode.Code is Code.Brtrue or Code.Brtrue_S or Code.Brfalse or Code.Brfalse_S) // unary conditional branch
+            {
+                var single = instruction.GetSinglePushInstruction();
+                if (single != null && IsSingleFlow(targets, [..OpCodeHelper.GetAllPushInstructions(single), instruction]))
+                {
+                    var value = EvalHelper.Eval(single);
+                    if (value != null)
+                    {
+                        RemoveAllPush(single);
+                        if (EvalHelper.IsUnaryCondition(instruction, value))
+                        {
+                            instruction.OpCode = OpCodes.Br;
+                        }
+                        else
+                        {
+                            Remove(instruction);
+                        }
+
+                        converted = true;
+                    }
+                }
+            } else if (instruction.OpCode.Code == Code.Switch)
+            {
+                var single = instruction.GetSinglePushInstruction();
+                if (single != null && IsSingleFlow(targets, [..OpCodeHelper.GetAllPushInstructions(single), instruction]))
+                {
+                    var value = EvalHelper.Eval(single);
+                    if (value != null)
+                    {
+                        var switchTargets = (Instruction[])instruction.Operand;
+                        var i = value.I64Value;
+                        RemoveAllPush(single);
+                        if (i >= 0 && i < switchTargets.Length)
+                        {
+                            instruction.OpCode = OpCodes.Br;
+                            instruction.Operand = switchTargets[i];
+                        }
+                        else
+                        {
+                            Remove(instruction);
+                        }
+
+                        converted = true;
+                    }
+                }
+            }
+            else if (OpCodeHelper.IsConditionalBranch(instruction)) // binary conditional branch
+            {
+                var (first, second) = instruction.GetTwoPushInstructions();
+                if (first != null && second != null && 
+                    IsSingleFlow(targets, [..OpCodeHelper.GetAllPushInstructions(first), ..OpCodeHelper.GetAllPushInstructions(second), instruction]))
+                {
+                    var firstValue = EvalHelper.Eval(first);
+                    var secondValue = EvalHelper.Eval(second);
+                    if (firstValue != null && secondValue != null)
+                    {
+                        RemoveAllPush(first);
+                        RemoveAllPush(second);
+                        if (EvalHelper.IsBinaryCondition(instruction, firstValue, secondValue))
+                        {
+                            instruction.OpCode = OpCodes.Br;
+                        }
+                        else
+                        {
+                            Remove(instruction);
+                        }
+
+                        converted = true;
+                    }
+                }
+            }
+
+            instruction = nextInstruction;
+        }
+
+        return converted;
+    }
+
+    private HashSet<Instruction> FindTargets()
+    {
+        var result = new HashSet<Instruction>();
+        var instruction = _parentMethod.Body.Instructions.FirstOrDefault();
+        while (instruction != null)
+        {
+            foreach (var i in GetInstructionTargets(instruction))
+            {
+                result.Add(GetMappedInstruction(i));
+            }
+
+            instruction = instruction.Next;
+        }
+
+        return result;
+    }
+
+    private void FoldBranches(Instruction outer)
+    {
+        while (true)
+        {
+            var targets = FindTargets();
+            // convert conditional branches to unconditional
+            if (!ConvertConstantConditionalBranches(outer, targets))
+            {
+                break;
+            }
+
+            RemoveUnreachableInstructions(outer);
+            RemoveNopBranchInstructions(outer);
+        }
     }
 
     private void FixInstructions()
@@ -417,7 +638,7 @@ public class InlineMethodWeaver
             if (CanInline || _usages == 0)
             {
                 Strategy = _usages == 0 ? ArgStrategy.None : ArgStrategy.Inline;
-                _allPushInstructions = GetAllPushInstructions();
+                _allPushInstructions = OpCodeHelper.GetAllPushInstructions(PushInstruction);
                 if (CanRemovePush)
                 {
                     foreach (var instruction in _allPushInstructions)
@@ -460,29 +681,6 @@ public class InlineMethodWeaver
             }
 
             argStack.Consume(this);
-        }
-
-        private List<Instruction> GetAllPushInstructions()
-        {
-            if (PushInstruction == null)
-            {
-                return [];
-            }
-
-            var instructions = new List<Instruction>();
-            var depth = 0;
-            var instruction = PushInstruction;
-            do
-            {
-                instructions.Insert(0, instruction);
-
-                depth += instruction.GetPushCount();
-                depth -= instruction.GetPopCount();
-
-                instruction = instruction.Previous;
-            } while (depth != 1);
-
-            return instructions;
         }
 
         private IEnumerable<Instruction> GetLdInstructions()
@@ -693,6 +891,7 @@ public class InlineMethodWeaver
 
         // inline body
         var instructions = _method.Body.Instructions;
+        var callInstructionNext = _callInstruction.Next;
         foreach (var instruction in instructions)
         {
             var nextInstruction = instruction.Next;
@@ -732,7 +931,7 @@ public class InlineMethodWeaver
                 // fix target ret
                 if (target?.OpCode.Code == Code.Ret)
                 {
-                    newInstruction = Instruction.Create(instruction.OpCode, _callInstruction.Next);
+                    newInstruction = Instruction.Create(instruction.OpCode, callInstructionNext);
                 }
             }
 
@@ -745,7 +944,7 @@ public class InlineMethodWeaver
                     break;
                 }
 
-                newInstruction = Instruction.Create(OpCodes.Br, _callInstruction.Next);
+                newInstruction = Instruction.Create(OpCodes.Br, callInstructionNext);
             }
 
             newInstruction ??= OpCodeHelper.Clone(instruction);
@@ -794,6 +993,7 @@ public class InlineMethodWeaver
             _instructionMap[_callInstruction] = callInstructionTarget;
         }
 
+        FoldBranches(callInstructionNext);
         FixInstructions();
 
         if (_parentMethod.DebugInformation.HasSequencePoints && _firstBodyInstruction != null && callSequencePoint != null)
