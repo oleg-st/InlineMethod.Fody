@@ -11,7 +11,7 @@ public class ModuleWeaver : BaseModuleWeaver
     private CustomAttribute? GetInlineAttribute(MethodDefinition method)
         => method.CustomAttributes.FirstOrDefault(i => i.AttributeType.FullName == "InlineMethod.InlineAttribute");
 
-    private readonly HashSet<string> _visitedMethods = new();
+    private readonly HashSet<string> _visitedMethods = [];
 
     private void ProcessCallInstruction(Instruction instruction, MethodDefinition method)
     {
@@ -38,7 +38,7 @@ public class ModuleWeaver : BaseModuleWeaver
         while (instruction != null)
         {
             var nextInstruction = instruction.Next;
-            if (instruction.OpCode.Code == Code.Call || instruction.OpCode.Code == Code.Callvirt)
+            if (instruction.OpCode.Code is Code.Call or Code.Callvirt)
             {
                 ProcessCallInstruction(instruction, method);
             }

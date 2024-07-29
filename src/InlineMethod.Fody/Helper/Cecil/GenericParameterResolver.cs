@@ -1,4 +1,5 @@
 ﻿#nullable disable
+// ReSharper disable All 
 using System;
 using Mono.Cecil;
 using Mono.Cecil.Cil;

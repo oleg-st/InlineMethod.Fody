@@ -11,7 +11,7 @@ public class ValueI64(long value) : Value
     public override float F32Value => Value;
     public override double F64Value => Value;
     public override bool IsNaN => false;
-    public long Value = value;
+    public long Value => value;
     public override int CompareTo(Value other) =>
         other switch
         {

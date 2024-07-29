@@ -147,16 +147,13 @@ public abstract class Value
 
     public Value Neg()
     {
-        if (this is ValueF64)
-            return FromF64(-F64Value);
-
-        if (this is ValueF32)
-            return FromF32(-F32Value);
-
-        if (this is ValueI64)
-            return FromI64(-I64Value);
-
-        return FromI32(-I32Value);
+        return this switch
+        {
+            ValueF64 => FromF64(-F64Value),
+            ValueF32 => FromF32(-F32Value),
+            ValueI64 => FromI64(-I64Value),
+            _ => FromI32(-I32Value)
+        };
     }
 
     public Value? Or(Value? other)

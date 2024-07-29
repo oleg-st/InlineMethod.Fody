@@ -11,7 +11,7 @@ public class ValueF32(float value) : Value
     public override float F32Value => Value;
     public override double F64Value => Value;
     public override bool IsNaN => float.IsNaN(Value);
-    public float Value = value;
+    public float Value => value;
     public override int CompareTo(Value other) =>
         other switch
         {

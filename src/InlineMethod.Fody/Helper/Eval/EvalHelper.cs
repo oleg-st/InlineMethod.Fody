@@ -77,7 +77,7 @@ internal static class EvalHelper
                 float v => Value.FromF32(v),
                 // R8
                 double v => Value.FromF64(v),
-                _ => throw new ArgumentException($"Unknown const {instruction.Operand.GetType()}"),
+                _ => throw new ArgumentException($"Unknown const {instruction.Operand.GetType()}")
             },
             Code.Ldc_I4_0 => Value.FromI32(0),
             Code.Ldc_I4_1 => Value.FromI32(1),
@@ -90,7 +90,7 @@ internal static class EvalHelper
             Code.Ldc_I4_8 => Value.FromI32(8),
             Code.Ldc_I4_M1 => Value.FromI32(-1),
             Code.Ldnull => Value.FromNull(),
-            _ => null,
+            _ => null
         };
     }
 
