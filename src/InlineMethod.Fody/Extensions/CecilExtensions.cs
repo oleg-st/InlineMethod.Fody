@@ -45,6 +45,20 @@ internal static class CecilExtensions
         return (first, second);
     }
 
+    public static Instruction?[] GetPushInstructions(this Instruction instruction, int count)
+    {
+        if (count == 0)
+            return [];
+
+        var result = new Instruction?[count];
+        var currentInstruction = instruction.Previous;
+
+        for (var paramIndex = result.Length - 1; paramIndex >= 0; --paramIndex)
+            result[paramIndex] = BackwardScanPush(ref currentInstruction);
+
+        return result;
+    }
+
     private static Instruction? BackwardScanPush(ref Instruction? currentInstruction)
     {
         if (currentInstruction == null)
@@ -80,15 +94,17 @@ internal static class CecilExtensions
             var popCount = GetPopCount(currentInstruction);
             var pushCount = GetPushCount(currentInstruction);
 
-            stackToConsume -= pushCount;
-
-            result = stackToConsume switch
+            if (pushCount > 0)
             {
-                0 when result == null => currentInstruction,
-                < 0 => throw new InstructionWeavingException(startInstruction,
-                    $"Could not locate call argument due to {currentInstruction} which pops an unexpected number of items from the stack"),
-                _ => result
-            };
+                result = stackToConsume switch
+                {
+                    1 when result == null => currentInstruction,
+                    < 1 => throw new InstructionWeavingException(startInstruction,
+                        $"Could not locate call argument due to {currentInstruction} which pops an unexpected number of items from the stack"),
+                    _ => result
+                };
+                stackToConsume -= pushCount;
+            }
 
             stackToConsume += popCount;
             currentInstruction = currentInstruction.Previous;
@@ -115,9 +131,6 @@ internal static class CecilExtensions
         if (instruction.OpCode.FlowControl == FlowControl.Call)
             return GetArgCount(instruction.OpCode, (IMethodSignature)instruction.Operand);
 
-        if (instruction.OpCode.Code == Code.Dup)
-            return 0;
-
         return instruction.OpCode.StackBehaviourPop switch
         {
             StackBehaviour.Pop0 => 0,
@@ -141,9 +154,6 @@ internal static class CecilExtensions
             var method = (IMethodSignature)instruction.Operand;
             return method.ReturnType.MetadataType != MetadataType.Void || instruction.OpCode.Code == Code.Newobj ? 1 : 0;
         }
-
-        if (instruction.OpCode.Code == Code.Dup)
-            return 1;
 
         return instruction.OpCode.StackBehaviourPush switch
         {

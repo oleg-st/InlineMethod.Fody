@@ -5,6 +5,7 @@ using Fody;
 using InlineMethod.Fody;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
+using Mono.Collections.Generic;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -18,7 +19,7 @@ public class ModuleWeaverTests(ITestOutputHelper testOutputHelper)
     static ModuleWeaverTests()
     {
         var weavingTask = new ModuleWeaver();
-        var testResult = weavingTask.ExecuteTestRun("InlineMethod.Tests.AssemblyToProcess.dll");
+        var testResult = weavingTask.ExecuteTestRun("InlineMethod.Tests.AssemblyToProcess.dll", false);
 
         var readerParameters = new ReaderParameters
         {
@@ -56,14 +57,37 @@ public class ModuleWeaverTests(ITestOutputHelper testOutputHelper)
         }
     }
 
-    private void CheckSimpleClass(TypeDefinition type)
+
+    private void CheckSimpleClass(TypeDefinition type, bool isEndsWith = false)
     {
         var simpleCaller = GetMethod(type, "Caller");
         var simpleCallerInlined = GetMethod(type, "Inlined");
         Assert.NotNull(simpleCaller);
         Assert.NotNull(simpleCallerInlined);
 
-        var isSame = simpleCaller.Body.Instructions.SequenceEqual(simpleCallerInlined.Body.Instructions, new InstructionComparer());
+        var callerInstructions = simpleCaller.Body.Instructions;
+        var inlinedInstructions = simpleCallerInlined.Body.Instructions;
+        if (isEndsWith)
+        {
+            // cut first instructions
+            var sliced = callerInstructions
+                .Skip(Math.Max(0, callerInstructions.Count - inlinedInstructions.Count))
+                .ToArray();
+
+            // adjust offsets
+            if (sliced.Length > 0)
+            {
+                var startOffset = sliced[0].Offset;
+                foreach (var instruction in sliced)
+                {
+                    instruction.Offset -= startOffset;
+                }
+            }
+
+            callerInstructions = new ReadOnlyCollection<Instruction>(sliced);
+        }
+
+        var isSame = callerInstructions.SequenceEqual(inlinedInstructions, new InstructionComparer());
         if (!isSame)
         {
             PrintMethod(simpleCaller);
@@ -188,5 +212,12 @@ public class ModuleWeaverTests(ITestOutputHelper testOutputHelper)
     {
         var type = ModuleDefinition.GetType($"{Namespace}.FoldDeep");
         CheckSimpleClass(type);
+    }
+
+    [Fact]
+    public void FoldVar()
+    {
+        var type = ModuleDefinition.GetType($"{Namespace}.FoldVar");
+        CheckSimpleClass(type, true);
     }
 }

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using InlineMethod.Fody.Extensions;
 using Mono.Cecil.Cil;
 
@@ -6,27 +7,38 @@ namespace InlineMethod.Fody.Helper.Eval;
 
 internal static class EvalHelper
 {
-    private class OpHelper(Instruction instruction)
+    private class OpHelper(Instruction instruction, Trackers trackers, HashSet<Instruction> targets)
     {
         // unary
         private readonly Lazy<Instruction?> _opSingle = new(instruction.GetSinglePushInstruction);
-        public Value? Single() => Eval(_opSingle.Value);
+        public Value? Single() => Eval(_opSingle.Value, trackers, targets);
 
         // binary
         private readonly Lazy<(Instruction?, Instruction?)> _opTwo = new(instruction.GetTwoPushInstructions);
-        public Value? First() => Eval(_opTwo.Value.Item1);
-        public Value? Second() => Eval(_opTwo.Value.Item2);
+        public Value? First() => Eval(_opTwo.Value.Item1, trackers, targets);
+        public Value? Second() => Eval(_opTwo.Value.Item2, trackers, targets);
     }
 
     // Eval const expression
-    public static Value? Eval(Instruction? instruction)
+    public static Value? Eval(Instruction? instruction, Trackers trackers, HashSet<Instruction> targets)
     {
         if (instruction == null)
         {
             return null;
         }
 
-        var op = new OpHelper(instruction);
+        var op = new OpHelper(instruction, trackers, targets);
+        var tracker = trackers.GetTracker(instruction);
+        if (tracker?.StoreInstruction != null)
+        {
+            if (!OpCodeHelper.IsSingleFlow(tracker.StoreInstruction, targets))
+            {
+                return null;
+            }
+
+            return new OpHelper(tracker.StoreInstruction, trackers, targets).Single();
+        }
+
         return instruction.OpCode.Code switch
         {
             // arithmetic
@@ -64,6 +76,8 @@ internal static class EvalHelper
             Code.Conv_R_Un => op.Single()?.ConvR_Un(),
             Code.Conv_R4 => op.Single()?.ConvR4(),
             Code.Conv_R8 => op.Single()?.ConvR8(),
+            // dup
+            Code.Dup => op.Single(),
             // const
             Code.Ldc_I4 or Code.Ldc_I4_S or Code.Ldc_I8 or Code.Ldc_R4 or Code.Ldc_R8 => instruction.Operand switch
             {

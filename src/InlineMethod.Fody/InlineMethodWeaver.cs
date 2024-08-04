@@ -312,11 +312,7 @@ public class InlineMethodWeaver
         }
     }
 
-    // no targets to any instruction except first
-    private static bool IsSingleFlow(HashSet<Instruction> targets, IEnumerable<Instruction> instructions) =>
-        !instructions.Skip(1).Any(targets.Contains);
-
-    private bool ConvertConstantConditionalBranches(Instruction outer, HashSet<Instruction> targets)
+    private bool ConvertConstantConditionalBranches(Instruction outer, HashSet<Instruction> targets, Trackers trackers)
     {
         var converted = false;
         var instruction = _firstBodyInstruction;
@@ -329,9 +325,9 @@ public class InlineMethodWeaver
                 case Code.Brtrue or Code.Brtrue_S or Code.Brfalse or Code.Brfalse_S:
                 {
                     var single = instruction.GetSinglePushInstruction();
-                    if (single != null && IsSingleFlow(targets, [..OpCodeHelper.GetAllPushInstructions(single), instruction]))
+                    if (single != null && OpCodeHelper.IsSingleFlow(instruction, targets))
                     {
-                        var value = EvalHelper.Eval(single);
+                        var value = EvalHelper.Eval(single, trackers, targets);
                         if (value != null)
                         {
                             RemoveAllPush(single);
@@ -353,9 +349,9 @@ public class InlineMethodWeaver
                 case Code.Switch:
                 {
                     var single = instruction.GetSinglePushInstruction();
-                    if (single != null && IsSingleFlow(targets, [..OpCodeHelper.GetAllPushInstructions(single), instruction]))
+                    if (single != null && OpCodeHelper.IsSingleFlow(instruction, targets))
                     {
-                        var value = EvalHelper.Eval(single);
+                        var value = EvalHelper.Eval(single, trackers, targets);
                         if (value != null)
                         {
                             var switchTargets = (Instruction[])instruction.Operand;
@@ -382,11 +378,10 @@ public class InlineMethodWeaver
                     if (OpCodeHelper.IsConditionalBranch(instruction)) // binary conditional branch
                     {
                         var (first, second) = instruction.GetTwoPushInstructions();
-                        if (first != null && second != null && 
-                            IsSingleFlow(targets, [..OpCodeHelper.GetAllPushInstructions(first), ..OpCodeHelper.GetAllPushInstructions(second), instruction]))
+                        if (first != null && second != null && OpCodeHelper.IsSingleFlow(instruction, targets))
                         {
-                            var firstValue = EvalHelper.Eval(first);
-                            var secondValue = EvalHelper.Eval(second);
+                            var firstValue = EvalHelper.Eval(first, trackers, targets);
+                            var secondValue = EvalHelper.Eval(second, trackers, targets);
                             if (firstValue != null && secondValue != null)
                             {
                                 RemoveAllPush(first);
@@ -432,13 +427,28 @@ public class InlineMethodWeaver
         return result;
     }
 
+    private Trackers GetTrackers()
+    {
+        var trackers = new Trackers(_parentMethod.Body.Variables);
+        var instruction = _parentMethod.Body.Instructions.FirstOrDefault();
+        while (instruction != null)
+        {
+            trackers.TrackInstruction(instruction);
+            instruction = instruction.Next;
+        }
+
+        return trackers;
+    }
+
     private void FoldBranches(Instruction outer)
     {
+        var trackers = GetTrackers();
+
         while (true)
         {
             var targets = FindTargets();
             // convert conditional branches to unconditional
-            if (!ConvertConstantConditionalBranches(outer, targets))
+            if (!ConvertConstantConditionalBranches(outer, targets, trackers))
             {
                 break;
             }
