@@ -1,5 +1,4 @@
 ﻿using System.Collections.Generic;
-using InlineMethod.Fody.Extensions;
 using Mono.Cecil.Cil;
 using Mono.Collections.Generic;
 
@@ -12,6 +11,8 @@ public abstract class Tracker
     public abstract Instruction? StoreInstruction { get; }
 
     public abstract void TrackInstruction(Instruction instruction);
+
+    public abstract bool IsLoad(Instruction instruction);
 }
 
 public class VarTracker : Tracker
@@ -28,6 +29,9 @@ public class VarTracker : Tracker
             Stores++;
         }
     }
+
+    public override bool IsLoad(Instruction instruction) => 
+        OpCodeHelper.IsLoadLoc(instruction);
 }
 
 public class Trackers(Collection<VariableDefinition> variables)

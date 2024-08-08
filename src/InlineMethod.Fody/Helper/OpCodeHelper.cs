@@ -310,6 +310,12 @@ internal static class OpCodeHelper
 
     public static IEnumerable<Instruction?> GetAllInstructions(Instruction instruction)
     {
-        return [..instruction.GetPushInstructions(instruction.GetPopCount()), instruction];
+        return
+        [
+            ..instruction.GetPushInstructions(instruction.GetPopCount())
+                .Select(i => i != null ? (IEnumerable<Instruction?>) GetAllPushInstructions(i) : [null])
+                .SelectMany(i => i),
+            instruction
+        ];
     }
 }

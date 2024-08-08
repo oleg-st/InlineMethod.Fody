@@ -29,7 +29,7 @@ internal static class EvalHelper
 
         var op = new OpHelper(instruction, trackers, targets);
         var tracker = trackers.GetTracker(instruction);
-        if (tracker?.StoreInstruction != null)
+        if (tracker != null && tracker.IsLoad(instruction) && tracker.StoreInstruction != null)
         {
             if (!OpCodeHelper.IsSingleFlow(tracker.StoreInstruction, targets))
             {
