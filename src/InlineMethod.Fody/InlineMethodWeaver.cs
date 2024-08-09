@@ -304,15 +304,15 @@ public class InlineMethodWeaver
         }
     }
 
-    private void RemoveAllPush(Instruction instruction)
+    private void RemoveAll(IEnumerable<Instruction> instructions)
     {
-        foreach (var i in OpCodeHelper.GetAllPushInstructions(instruction))
+        foreach (var i in instructions)
         {
             Remove(i);
         }
     }
 
-    private bool ConvertConstantConditionalBranches(Instruction outer, HashSet<Instruction> targets, Trackers trackers)
+    private bool ConvertConstantConditionalBranches(Instruction outer, HashSet<Instruction> targets, VarTrackers varTrackers)
     {
         var converted = false;
         var instruction = _firstBodyInstruction;
@@ -324,13 +324,13 @@ public class InlineMethodWeaver
                 // unary conditional branch
                 case Code.Brtrue or Code.Brtrue_S or Code.Brfalse or Code.Brfalse_S:
                 {
-                    var single = instruction.GetSinglePushInstruction();
-                    if (single != null && OpCodeHelper.IsSingleFlow(instruction, targets))
+                    var instructionHelper = new InstructionHelper(instruction, varTrackers, targets);
+                    if (instructionHelper.IsEvaluable())
                     {
-                        var value = EvalHelper.Eval(single, trackers, targets);
+                        var value = instructionHelper.EvalFirst();
                         if (value != null)
                         {
-                            RemoveAllPush(single);
+                            RemoveAll(instructionHelper.AllPush());
                             if (EvalHelper.IsUnaryCondition(instruction, value))
                             {
                                 instruction.OpCode = OpCodes.Br;
@@ -348,15 +348,15 @@ public class InlineMethodWeaver
                 }
                 case Code.Switch:
                 {
-                    var single = instruction.GetSinglePushInstruction();
-                    if (single != null && OpCodeHelper.IsSingleFlow(instruction, targets))
+                    var instructionHelper = new InstructionHelper(instruction, varTrackers, targets);
+                    if (instructionHelper.IsEvaluable())
                     {
-                        var value = EvalHelper.Eval(single, trackers, targets);
+                        var value = instructionHelper.EvalFirst();
                         if (value != null)
                         {
                             var switchTargets = (Instruction[])instruction.Operand;
                             var i = value.I64Value;
-                            RemoveAllPush(single);
+                            RemoveAll(instructionHelper.AllPush());
                             if (i >= 0 && i < switchTargets.Length)
                             {
                                 instruction.OpCode = OpCodes.Br;
@@ -377,15 +377,15 @@ public class InlineMethodWeaver
                 {
                     if (OpCodeHelper.IsConditionalBranch(instruction)) // binary conditional branch
                     {
-                        var (first, second) = instruction.GetTwoPushInstructions();
-                        if (first != null && second != null && OpCodeHelper.IsSingleFlow(instruction, targets))
+                        var instructionHelper = new InstructionHelper(instruction, varTrackers, targets);
+
+                        if (instructionHelper.IsEvaluable())
                         {
-                            var firstValue = EvalHelper.Eval(first, trackers, targets);
-                            var secondValue = EvalHelper.Eval(second, trackers, targets);
+                            var firstValue = instructionHelper.EvalFirst();
+                            var secondValue = instructionHelper.EvalSecond();
                             if (firstValue != null && secondValue != null)
                             {
-                                RemoveAllPush(first);
-                                RemoveAllPush(second);
+                                RemoveAll(instructionHelper.AllPush());
                                 if (EvalHelper.IsBinaryCondition(instruction, firstValue, secondValue))
                                 {
                                     instruction.OpCode = OpCodes.Br;
@@ -427,22 +427,54 @@ public class InlineMethodWeaver
         return result;
     }
 
-    private Trackers GetTrackers()
+    private VarTrackers GetVarTrackers()
     {
-        var trackers = new Trackers(_parentMethod.Body.Variables);
+        var trackers = new VarTrackers(_parentMethod.Body.Variables);
         var instruction = _parentMethod.Body.Instructions.FirstOrDefault();
         while (instruction != null)
         {
-            trackers.TrackInstruction(instruction);
+            trackers.Track(instruction);
             instruction = instruction.Next;
         }
 
         return trackers;
     }
 
+    private void RemoveConstantVarStores()
+    {
+        var targets = FindTargets();
+        bool converted;
+        do
+        {
+            converted = false;
+            var trackers = GetVarTrackers();
+            foreach (var tracker in trackers.All)
+            {
+                // only one store
+                if (tracker is {LoadAddresses: 0, Loads: 0, StoreInstruction: not null})
+                {
+                    var instruction = tracker.StoreInstruction;
+                    var instructionHelper = new InstructionHelper(instruction, trackers, targets);
+                    // constant value
+                    if (instructionHelper.IsEvaluable())
+                    {
+                        var value = instructionHelper.EvalFirst();
+                        if (value != null)
+                        {
+                            RemoveAll(instructionHelper.All());
+                            _parentMethod.Body.Variables.Remove(tracker.VariableDefinition);
+                            converted = true;
+                        }
+                    }
+                }
+            }
+        } while (converted);
+    }
+
     private void FoldBranches(Instruction outer)
     {
-        var trackers = GetTrackers();
+        var trackers = GetVarTrackers();
+        var converted = false;
 
         while (true)
         {
@@ -453,8 +485,14 @@ public class InlineMethodWeaver
                 break;
             }
 
+            converted = true;
             RemoveUnreachableInstructions(outer);
             RemoveNopBranchInstructions(outer);
+        }
+
+        if (converted)
+        {
+            RemoveConstantVarStores();
         }
     }
 

@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
 using InlineMethod.Fody.Extensions;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
@@ -303,19 +302,4 @@ internal static class OpCodeHelper
 
     public static bool IsConditionalBranch(Instruction instruction)
         => instruction.OpCode.FlowControl == FlowControl.Cond_Branch;
-
-    // no targets to any instruction except first
-    public static bool IsSingleFlow(Instruction instruction, HashSet<Instruction> targets) =>
-        !GetAllInstructions(instruction).Skip(1).Any(i => i == null || targets.Contains(i));
-
-    public static IEnumerable<Instruction?> GetAllInstructions(Instruction instruction)
-    {
-        return
-        [
-            ..instruction.GetPushInstructions(instruction.GetPopCount())
-                .Select(i => i != null ? (IEnumerable<Instruction?>) GetAllPushInstructions(i) : [null])
-                .SelectMany(i => i),
-            instruction
-        ];
     }
-}

@@ -218,6 +218,6 @@ public class ModuleWeaverTests(ITestOutputHelper testOutputHelper)
     public void FoldVar()
     {
         var type = ModuleDefinition.GetType($"{Namespace}.FoldVar");
-        CheckSimpleClass(type, true);
+        CheckSimpleClass(type);
     }
 }

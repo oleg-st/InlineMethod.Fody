@@ -7,77 +7,66 @@ namespace InlineMethod.Fody.Helper.Eval;
 
 internal static class EvalHelper
 {
-    private class OpHelper(Instruction instruction, Trackers trackers, HashSet<Instruction> targets)
-    {
-        // unary
-        private readonly Lazy<Instruction?> _opSingle = new(instruction.GetSinglePushInstruction);
-        public Value? Single() => Eval(_opSingle.Value, trackers, targets);
-
-        // binary
-        private readonly Lazy<(Instruction?, Instruction?)> _opTwo = new(instruction.GetTwoPushInstructions);
-        public Value? First() => Eval(_opTwo.Value.Item1, trackers, targets);
-        public Value? Second() => Eval(_opTwo.Value.Item2, trackers, targets);
-    }
-
     // Eval const expression
-    public static Value? Eval(Instruction? instruction, Trackers trackers, HashSet<Instruction> targets)
+    public static Value? Eval(Instruction? instruction, VarTrackers varTrackers, HashSet<Instruction> targets)
     {
         if (instruction == null)
         {
             return null;
         }
 
-        var op = new OpHelper(instruction, trackers, targets);
-        var tracker = trackers.GetTracker(instruction);
+        var tracker = varTrackers.Get(instruction);
         if (tracker != null && tracker.IsLoad(instruction) && tracker.StoreInstruction != null)
         {
-            if (!OpCodeHelper.IsSingleFlow(tracker.StoreInstruction, targets))
+            var instructionHelper = new InstructionHelper(tracker.StoreInstruction, varTrackers, targets);
+            if (!instructionHelper.IsEvaluable())
             {
                 return null;
             }
 
-            return new OpHelper(tracker.StoreInstruction, trackers, targets).Single();
+            return new InstructionHelper(tracker.StoreInstruction, varTrackers, targets).EvalFirst();
         }
 
+        var op = new InstructionHelper(instruction, varTrackers, targets);
         return instruction.OpCode.Code switch
         {
             // arithmetic
-            Code.Add => op.First()?.Add(op.Second()),
-            Code.Sub => op.First()?.Sub(op.Second()),
-            Code.Mul => op.First()?.Mul(op.Second()),
-            Code.Div => op.First()?.Div(op.Second()),
-            Code.Div_Un => op.First()?.DivUn(op.Second()),
-            Code.Neg => op.Single()?.Neg(),
+            Code.Add => op.EvalFirst()?.Add(op.EvalSecond()),
+            Code.Sub => op.EvalFirst()?.Sub(op.EvalSecond()),
+            Code.Mul => op.EvalFirst()?.Mul(op.EvalSecond()),
+            Code.Div => op.EvalFirst()?.Div(op.EvalSecond()),
+            Code.Div_Un => op.EvalFirst()?.DivUn(op.EvalSecond()),
+            Code.Neg => op.EvalFirst()?.Neg(),
             // bitwise
-            Code.Not => op.Single()?.Not(),
-            Code.Or => op.First()?.Or(op.Second()),
-            Code.And => op.First()?.And(op.Second()),
-            Code.Xor => op.First()?.Xor(op.Second()),
-            Code.Shl => op.First()?.Shl(op.Second()),
-            Code.Shr => op.First()?.Shr(op.Second()),
-            Code.Shr_Un => op.First()?.ShrUn(op.Second()),
+            Code.Not => op.EvalFirst()?.Not(),
+            Code.Or => op.EvalFirst()?.Or(op.EvalSecond()),
+            Code.And => op.EvalFirst()?.And(op.EvalSecond()),
+            Code.Xor => op.EvalFirst()?.Xor(op.EvalSecond()),
+            Code.Shl => op.EvalFirst()?.Shl(op.EvalSecond()),
+            Code.Shr => op.EvalFirst()?.Shr(op.EvalSecond()),
+            Code.Shr_Un => op.EvalFirst()?.ShrUn(op.EvalSecond()),
             // conditional
-            Code.Ceq => op.First()?.Ceq(op.Second()),
-            Code.Clt => op.First()?.Clt(op.Second()),
-            Code.Clt_Un => op.First()?.CltUn(op.Second()),
-            Code.Cgt => op.First()?.Cgt(op.Second()),
-            Code.Cgt_Un => op.First()?.CgtUn(op.Second()),
+            Code.Ceq => op.EvalFirst()?.Ceq(op.EvalSecond()),
+            Code.Clt => op.EvalFirst()?.Clt(op.EvalSecond()),
+            Code.Clt_Un => op.EvalFirst()?.CltUn(op.EvalSecond()),
+            Code.Cgt => op.EvalFirst()?.Cgt(op.EvalSecond()),
+            Code.Cgt_Un => op.EvalFirst()?.CgtUn(op.EvalSecond()),
             // conv
-            Code.Conv_I1 => op.Single()?.ConvI1(),
-            Code.Conv_I2 => op.Single()?.ConvI2(),
-            Code.Conv_I4 => op.Single()?.ConvI4(),
-            Code.Conv_I8 => op.Single()?.ConvI8(),
-            Code.Conv_U1 => op.Single()?.ConvU1(),
-            Code.Conv_U2 => op.Single()?.ConvU2(),
-            Code.Conv_U4 => op.Single()?.ConvU4(),
-            Code.Conv_U8 => op.Single()?.ConvU8(),
-            Code.Conv_I => op.Single()?.ConvI(),
-            Code.Conv_U => op.Single()?.ConvU(),
-            Code.Conv_R_Un => op.Single()?.ConvR_Un(),
-            Code.Conv_R4 => op.Single()?.ConvR4(),
-            Code.Conv_R8 => op.Single()?.ConvR8(),
+            Code.Conv_I1 => op.EvalFirst()?.ConvI1(),
+            Code.Conv_I2 => op.EvalFirst()?.ConvI2(),
+            Code.Conv_I4 => op.EvalFirst()?.ConvI4(),
+            Code.Conv_I8 => op.EvalFirst()?.ConvI8(),
+            Code.Conv_U1 => op.EvalFirst()?.ConvU1(),
+            Code.Conv_U2 => op.EvalFirst()?.ConvU2(),
+            Code.Conv_U4 => op.EvalFirst()?.ConvU4(),
+            Code.Conv_U8 => op.EvalFirst()?.ConvU8(),
+            Code.Conv_I => op.EvalFirst()?.ConvI(),
+            Code.Conv_U => op.EvalFirst()?.ConvU(),
+            Code.Conv_R_Un => op.EvalFirst()?.ConvR_Un(),
+            Code.Conv_R4 => op.EvalFirst()?.ConvR4(),
+            Code.Conv_R8 => op.EvalFirst()?.ConvR8(),
             // dup
-            Code.Dup => op.Single(),
+            Code.Dup => op.EvalFirst(),
             // const
             Code.Ldc_I4 or Code.Ldc_I4_S or Code.Ldc_I8 or Code.Ldc_R4 or Code.Ldc_R8 => instruction.Operand switch
             {
