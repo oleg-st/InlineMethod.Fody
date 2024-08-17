@@ -2,7 +2,7 @@
 
 namespace InlineMethod.Fody.Helper.Eval;
 
-public class ValueF64(double value) : Value
+public class ValueF64(EvalContext evalContext, double value) : ValueNumber(evalContext)
 {
     public override int I32Value => (int)Value;
     public override uint U32Value => (uint)Value;
@@ -23,4 +23,6 @@ public class ValueF64(double value) : Value
         };
 
     public override int CompareToUn(Value other) => CompareTo(other);
+
+    public override bool Equals(Value other) => other is ValueF64 v && Value.Equals(v.Value);
 }

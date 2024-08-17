@@ -9,8 +9,7 @@ namespace InlineMethod.Fody.Helper;
 
 internal static class OpCodeHelper
 {
-    public static ParameterDefinition? GetArgParameterDefinition(Instruction instruction,
-        InlineMethodWeaver.MethodParameters parameters)
+    public static ParameterDefinition? GetArgParameterDefinition(Instruction instruction, MethodParameters parameters)
     {
         switch (instruction.OpCode.Code)
         {
@@ -194,6 +193,12 @@ internal static class OpCodeHelper
     public static bool IsLoadFlda(Instruction instruction) 
         => instruction.OpCode.Code == Code.Ldflda;
 
+    public static bool IsLoadSFld(Instruction instruction)
+        => instruction.OpCode.Code == Code.Ldsfld;
+
+    public static bool IsStoreSFld(Instruction instruction)
+        => instruction.OpCode.Code == Code.Stsfld;
+
     public static bool IsStoreLoc(Instruction instruction)
     {
         var code = instruction.OpCode.Code;
@@ -302,4 +307,46 @@ internal static class OpCodeHelper
 
     public static bool IsConditionalBranch(Instruction instruction)
         => instruction.OpCode.FlowControl == FlowControl.Cond_Branch;
-    }
+
+    public static OpCode ConvertUnaryConditional(Instruction instruction, Instruction op) =>
+        instruction.OpCode.Code switch
+        {
+            Code.Brtrue => op.OpCode.Code switch
+            {
+                Code.Ceq => OpCodes.Beq,
+                Code.Clt => OpCodes.Blt,
+                Code.Clt_Un => OpCodes.Blt_Un,
+                Code.Cgt => OpCodes.Bgt,
+                Code.Cgt_Un => OpCodes.Bgt_Un,
+                _ => throw new NotSupportedException(),
+            },
+            Code.Brtrue_S => op.OpCode.Code switch
+            {
+                Code.Ceq => OpCodes.Beq_S,
+                Code.Clt => OpCodes.Blt_S,
+                Code.Clt_Un => OpCodes.Blt_Un_S,
+                Code.Cgt => OpCodes.Bgt_S,
+                Code.Cgt_Un => OpCodes.Bgt_Un_S,
+                _ => throw new NotSupportedException(),
+            },
+            Code.Brfalse => op.OpCode.Code switch
+            {
+                Code.Ceq => OpCodes.Bne_Un,
+                Code.Clt => OpCodes.Bge,
+                Code.Clt_Un => OpCodes.Bge_Un,
+                Code.Cgt => OpCodes.Ble,
+                Code.Cgt_Un => OpCodes.Ble_Un,
+                _ => throw new NotSupportedException(),
+            },
+            Code.Brfalse_S => op.OpCode.Code switch
+            {
+                Code.Ceq => OpCodes.Bne_Un_S,
+                Code.Clt => OpCodes.Bge_S,
+                Code.Clt_Un => OpCodes.Bge_Un_S,
+                Code.Cgt => OpCodes.Ble_S,
+                Code.Cgt_Un => OpCodes.Ble_Un_S,
+                _ => throw new NotSupportedException(),
+            },
+            _ => throw new NotSupportedException(),
+        };
+}

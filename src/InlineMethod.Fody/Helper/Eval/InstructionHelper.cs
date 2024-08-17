@@ -1,53 +1,80 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
-using InlineMethod.Fody.Extensions;
 using Mono.Cecil.Cil;
 
 namespace InlineMethod.Fody.Helper.Eval;
 
-public class PushInstruction(Instruction? instruction)
-{
-    public Instruction? Instruction => instruction;
-    public readonly Lazy<List<Instruction>> All = new(() => OpCodeHelper.GetAllPushInstructions(instruction));
-    public bool IsKnown => instruction != null;
-}
-
 public class InstructionHelper
 {
-    private readonly VarTrackers _varTrackers;
-    private readonly HashSet<Instruction> _targets;
-    private readonly bool _isPushKnown;
-    public Instruction Instruction { get; }
-    public PushInstruction[] PushInstructions { get; }
+    private readonly Context _context;
+    private readonly EvalContext _evalContext;
 
-    public Instruction? First => PushInstructions[0].Instruction;
-    public Instruction? Second => PushInstructions[1].Instruction;
-    
-    public Value? EvalFirst() => EvalHelper.Eval(First, _varTrackers, _targets);
-    public Value? EvalSecond() => EvalHelper.Eval(Second, _varTrackers, _targets);
+    public Instruction? Instruction { get; }
+    public PushHelper[] PushInstructions { get; }
 
-    public InstructionHelper(Instruction instruction, VarTrackers varTrackers, HashSet<Instruction> targets)
+    public PushHelper FirstPush => PushInstructions[0];
+    public Instruction? First => FirstPush.Instruction;
+    public bool IsRemovable => PushInstructions.All(p => p.IsRemovable);
+
+    private Value? Eval(PushHelper pushHelper)
     {
-        _varTrackers = varTrackers;
-        _targets = targets;
-        Instruction = instruction;
-        PushInstructions = instruction.GetPushInstructions(Instruction.GetPopCount())
-            .Select(i => new PushInstruction(i)).ToArray();
-        _isPushKnown = PushInstructions.All(p => p.IsKnown);
+        // all values is equals
+        if (pushHelper.Sequences != null)
+        {
+            var value = EvalHelper.Eval(_context, _evalContext, pushHelper.Sequences.Items[0].PushInstruction);
+            if (value == null)
+            {
+                return null;
+            }
+
+            for (var i = 1; i < pushHelper.Sequences.Items.Count; i++)
+            {
+                var current = EvalHelper.Eval(_context, _evalContext, pushHelper.Sequences.Items[i].PushInstruction);
+                if (current == null || !current.Equals(value))
+                {
+                    return null;
+                }
+            }
+
+            return value;
+        }
+
+        return null;
     }
 
+    public IEnumerable<Value?> EvalAll() => PushInstructions.Select(Eval);
+
+    public Value? EvalFirst() => Eval(PushInstructions[0]);
+
+    public Value? EvalSecond() => Eval(PushInstructions[1]);
+
+    public InstructionHelper(Context context, Instruction instruction) : this(context, new EvalContext(), instruction)
+    {
+    }
+
+    public InstructionHelper(Context context, EvalContext evalContext, Instruction instruction)
+    {
+        _context = context;
+        _evalContext = evalContext;
+        Instruction = instruction;
+        var pushScanner = new PushScanner(_context.Targets, Instruction);
+        PushInstructions = pushScanner.Scan();
+    }
+
+    public InstructionHelper(Context context, EvalContext evalContext, PushHelper[] pushHelpers)
+    {
+        _context = context;
+        _evalContext = evalContext;
+        Instruction = null;
+        PushInstructions = pushHelpers;
+    }
+
+
     // all push instructions are known and no targets to any instruction except first
-    public bool IsEvaluable() => _isPushKnown && !All().Skip(1).Any(i => i == null || _targets.Contains(i));
+    public bool IsEvaluable() => PushInstructions.All(p => p.IsEvaluable);
 
     public IEnumerable<Instruction> AllPush() =>
         PushInstructions
-            .Select(i => i.All.Value)
+            .Select(i => i.All)
             .SelectMany(i => i);
-
-    public IEnumerable<Instruction> All() =>
-    [
-        ..AllPush(),
-        Instruction
-    ];
 }

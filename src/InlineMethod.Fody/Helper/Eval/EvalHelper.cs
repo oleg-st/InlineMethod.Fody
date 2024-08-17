@@ -1,6 +1,6 @@
 ﻿using System;
-using System.Collections.Generic;
-using InlineMethod.Fody.Extensions;
+using System.Linq;
+using Mono.Cecil;
 using Mono.Cecil.Cil;
 
 namespace InlineMethod.Fody.Helper.Eval;
@@ -8,28 +8,35 @@ namespace InlineMethod.Fody.Helper.Eval;
 internal static class EvalHelper
 {
     // Eval const expression
-    public static Value? Eval(Instruction? instruction, VarTrackers varTrackers, HashSet<Instruction> targets)
+    public static Value? Eval(Context context, EvalContext evalContext, Instruction? instruction)
     {
         if (instruction == null)
         {
             return null;
         }
 
-        var tracker = varTrackers.Get(instruction);
-        if (tracker != null && tracker.IsLoad(instruction) && tracker.StoreInstruction != null)
+        var tracker = context.GetTracker(instruction);
+        if (tracker != null && tracker.IsLoad(instruction))
         {
-            var instructionHelper = new InstructionHelper(tracker.StoreInstruction, varTrackers, targets);
-            if (!instructionHelper.IsEvaluable())
+            evalContext.AddTracker(tracker);
+            var instructionHelper = tracker.GetInstructionHelper(evalContext);
+            if (instructionHelper == null || !instructionHelper.IsEvaluable())
             {
                 return null;
             }
 
-            return new InstructionHelper(tracker.StoreInstruction, varTrackers, targets).EvalFirst();
+            return instructionHelper.EvalFirst();
         }
 
-        var op = new InstructionHelper(instruction, varTrackers, targets);
+        var op = new InstructionHelper(context, evalContext, instruction);
         return instruction.OpCode.Code switch
         {
+            // new
+            Code.Newobj => instruction.Operand is MethodReference method
+                ? new ValueNewObject(evalContext, method.DeclaringType, op.EvalAll().ToArray(), op)
+                : null,
+            // method
+            Code.Ldftn => instruction.Operand is MethodReference method ? new ValueMethod(evalContext, method) : null,
             // arithmetic
             Code.Add => op.EvalFirst()?.Add(op.EvalSecond()),
             Code.Sub => op.EvalFirst()?.Sub(op.EvalSecond()),
@@ -71,33 +78,33 @@ internal static class EvalHelper
             Code.Ldc_I4 or Code.Ldc_I4_S or Code.Ldc_I8 or Code.Ldc_R4 or Code.Ldc_R8 => instruction.Operand switch
             {
                 // I4
-                int v => Value.FromI32(v),
+                int v => evalContext.FromI32(v),
                 // I4_S
-                sbyte v => Value.FromI32(v),
+                sbyte v => evalContext.FromI32(v),
                 // I8
-                long v => Value.FromI64(v),
+                long v => evalContext.FromI64(v),
                 // R4
-                float v => Value.FromF32(v),
+                float v => evalContext.FromF32(v),
                 // R8
-                double v => Value.FromF64(v),
+                double v => evalContext.FromF64(v),
                 _ => throw new ArgumentException($"Unknown const {instruction.Operand.GetType()}")
             },
-            Code.Ldc_I4_0 => Value.FromI32(0),
-            Code.Ldc_I4_1 => Value.FromI32(1),
-            Code.Ldc_I4_2 => Value.FromI32(2),
-            Code.Ldc_I4_3 => Value.FromI32(3),
-            Code.Ldc_I4_4 => Value.FromI32(4),
-            Code.Ldc_I4_5 => Value.FromI32(5),
-            Code.Ldc_I4_6 => Value.FromI32(6),
-            Code.Ldc_I4_7 => Value.FromI32(7),
-            Code.Ldc_I4_8 => Value.FromI32(8),
-            Code.Ldc_I4_M1 => Value.FromI32(-1),
-            Code.Ldnull => Value.FromNull(),
+            Code.Ldc_I4_0 => evalContext.FromI32(0),
+            Code.Ldc_I4_1 => evalContext.FromI32(1),
+            Code.Ldc_I4_2 => evalContext.FromI32(2),
+            Code.Ldc_I4_3 => evalContext.FromI32(3),
+            Code.Ldc_I4_4 => evalContext.FromI32(4),
+            Code.Ldc_I4_5 => evalContext.FromI32(5),
+            Code.Ldc_I4_6 => evalContext.FromI32(6),
+            Code.Ldc_I4_7 => evalContext.FromI32(7),
+            Code.Ldc_I4_8 => evalContext.FromI32(8),
+            Code.Ldc_I4_M1 => evalContext.FromI32(-1),
+            Code.Ldnull => evalContext.FromNull(),
             _ => null
         };
     }
 
-    public static bool IsBinaryCondition(Instruction instruction, Value op1, Value op2)
+    public static bool IsBinaryCondition(Instruction instruction, ValueNumber op1, ValueNumber op2)
     {
         return instruction.OpCode.Code switch
         {
@@ -115,7 +122,7 @@ internal static class EvalHelper
         };
     }
 
-    public static bool IsUnaryCondition(Instruction instruction, Value op)
+    public static bool IsUnaryCondition(Instruction instruction, ValueNumber op)
     {
         return instruction.OpCode.Code switch
         {

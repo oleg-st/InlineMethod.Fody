@@ -13,12 +13,12 @@ public class ModuleWeaver : BaseModuleWeaver
 
     private readonly HashSet<string> _visitedMethods = [];
 
-    private void ProcessCallInstruction(Instruction instruction, MethodDefinition method)
+    public void ProcessCallInstruction(Instruction instruction, MethodDefinition method, bool force = false)
     {
         if (instruction.Operand is MethodReference calledMethod)
         {
             var calledMethodDefinition = calledMethod.Resolve();
-            if (calledMethodDefinition != null && GetInlineAttribute(calledMethodDefinition) != null)
+            if (calledMethodDefinition != null && (force || GetInlineAttribute(calledMethodDefinition) != null))
             {
                 ProcessMethod(calledMethodDefinition);
                 var inlineMethodWeaver = new InlineMethodWeaver(this, instruction, method, calledMethodDefinition);

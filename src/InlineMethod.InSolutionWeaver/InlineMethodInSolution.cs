@@ -3,14 +3,13 @@ using Fody;
 using InlineMethod.Fody;
 using Mono.Cecil;
 
-namespace InlineMethod.InSolutionWeaver
+namespace InlineMethod.InSolutionWeaver;
+
+public class InlineMethodInSolution : ModuleWeaver
 {
-    public class InlineMethodInSolution : ModuleWeaver
+    static InlineMethodInSolution()
     {
-        static InlineMethodInSolution()
-        {
-            GC.KeepAlive(typeof(ModuleDefinition));
-            GC.KeepAlive(typeof(WeavingException));
-        }
+        GC.KeepAlive(typeof(ModuleDefinition));
+        GC.KeepAlive(typeof(WeavingException));
     }
 }

@@ -220,4 +220,25 @@ public class ModuleWeaverTests(ITestOutputHelper testOutputHelper)
         var type = ModuleDefinition.GetType($"{Namespace}.FoldVar");
         CheckSimpleClass(type);
     }
+
+    [Fact]
+    public void ArgBranch()
+    {
+        var type = ModuleDefinition.GetType($"{Namespace}.ArgBranch");
+        CheckSimpleClass(type);
+    }
+
+    [Fact]
+    public void InlineDelegate()
+    {
+        var type = ModuleDefinition.GetType($"{Namespace}.InlineDelegate");
+        CheckSimpleClass(type);
+    }
+
+    [Fact]
+    public void WithException()
+    {
+        var type = ModuleDefinition.GetType($"{Namespace}.WithException");
+        CheckSimpleClass(type);
+    }
 }

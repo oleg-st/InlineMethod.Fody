@@ -2,7 +2,7 @@
 
 namespace InlineMethod.Fody.Helper.Eval;
 
-public class ValueF32(float value) : Value
+public class ValueF32(EvalContext evalContext, float value) : ValueNumber(evalContext)
 {
     public override int I32Value => (int)Value;
     public override uint U32Value => (uint)Value;
@@ -23,4 +23,5 @@ public class ValueF32(float value) : Value
         };
 
     public override int CompareToUn(Value other) => CompareTo(other);
+    public override bool Equals(Value other) => other is ValueF32 v && Value.Equals(v.Value);
 }

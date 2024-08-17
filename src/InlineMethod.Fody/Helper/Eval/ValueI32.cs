@@ -2,7 +2,7 @@
 
 namespace InlineMethod.Fody.Helper.Eval;
 
-public class ValueI32(int value) : Value
+public class ValueI32(EvalContext evalContext, int value) : ValueNumber(evalContext)
 {
     public override int I32Value => Value;
     public override uint U32Value => (uint)Value;
@@ -31,4 +31,6 @@ public class ValueI32(int value) : Value
             ValueF64 valueF64 => F64Value.CompareTo(valueF64.F64Value),
             _ => throw new ArgumentException("Unknown value")
         };
+
+    public override bool Equals(Value other) => other is ValueI32 v && Value.Equals(v.Value);
 }

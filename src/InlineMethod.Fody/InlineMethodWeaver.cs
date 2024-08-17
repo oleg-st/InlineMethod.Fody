@@ -26,17 +26,16 @@ public class InlineMethodWeaver
     private readonly MethodDefinition _parentMethod;
     private readonly MethodDefinition _method;
     private readonly ILProcessor _il;
-    private readonly Instruction?[] _pushInstructions;
+    private readonly PushHelper[] _pushInstructions;
     private readonly Arg[] _args;
     private ArgStack? _argStack;
     private readonly MethodParameters _parameters;
     private int _firstInnerVariableIndex;
     private Instruction? _firstBodyInstruction;
     private Instruction? _beforeBodyInstruction;
-
-    private readonly Dictionary<Instruction, Instruction> _instructionMap = new();
-
+    private readonly InstructionMapper _mapper = new();
     private readonly TypeResolver? _typeResolver;
+    private readonly Context _parentContext;
 
     private static bool CanInlineInstruction(Instruction? instruction, int usages)
         => instruction != null &&
@@ -66,8 +65,11 @@ public class InlineMethodWeaver
         _parentMethod = parentMethod;
         _method = method;
         _il = _parentMethod.Body.GetILProcessor();
-        //_moduleWeaver.WriteMessage($"Method {_method.Name} to {_parentMethod.Name}", MessageImportance.Normal);
-        _pushInstructions = _callInstruction.GetArgumentPushInstructions();
+        // _moduleWeaver.WriteWarning($"Method {_method.Name} to {_parentMethod.Name}");
+        _parentContext = new Context(_parentMethod, _mapper);
+        _parentContext.ProcessTargets();
+        var pushScanner = new PushScanner(_parentContext.Targets, _callInstruction);
+        _pushInstructions = pushScanner.Scan();
 
         // parameters
         _parameters = new MethodParameters(_method);
@@ -81,37 +83,6 @@ public class InlineMethodWeaver
         _typeResolver = _callInstruction.Operand is GenericInstanceMethod genericInstanceMethod
             ? new TypeResolver(genericInstanceMethod)
             : null;
-    }
-
-    public class MethodParameters
-    {
-        private readonly MethodDefinition _methodDefinition;
-        private readonly bool _hasImplicitThis;
-        public int Count { get; }
-
-        public MethodParameters(MethodDefinition methodDefinition)
-        {
-            _methodDefinition = methodDefinition;
-            _hasImplicitThis = _methodDefinition is {HasThis: true, ExplicitThis: false};
-            Count = _methodDefinition.Parameters.Count + (_hasImplicitThis ? 1 : 0);
-        }
-
-        public ParameterDefinition this[int index]
-        {
-            get
-            {
-                if (_hasImplicitThis)
-                {
-                    if (index == 0)
-                    {
-                        return _methodDefinition.Body.ThisParameter;
-                    }
-                    index--;
-                }
-
-                return _methodDefinition.Parameters[index];
-            }
-        }
     }
 
     private class ArgStack(IEnumerable<Arg> args)
@@ -147,11 +118,9 @@ public class InlineMethodWeaver
     [MemberNotNull(nameof(_argStack))]
     private void CreateArgs()
     {
-        FindSkipArgsReferences();
-
         for (var i = 0; i < _args.Length; i++)
         {
-            _args[i] = new Arg(this, i, _pushInstructions[i], _args.Length);
+            _args[i] = new Arg(this, i, _pushInstructions[i].Instruction, _args.Length);
         }
 
         _argStack = new ArgStack(_args);
@@ -177,7 +146,7 @@ public class InlineMethodWeaver
             _firstBodyInstruction = instruction.Next;
         }
 
-        _instructionMap[instruction] = instruction.Next;
+        _mapper.Map(instruction, instruction.Next);
         _il.Remove(instruction);
     }
 
@@ -195,39 +164,9 @@ public class InlineMethodWeaver
     private void InsertBeforeBody(Instruction instruction)
     {
         var target = _firstBodyInstruction ?? _callInstruction;
-        _instructionMap[target] = instruction;
+        _mapper.Map(target, instruction);
         _il.InsertBefore(target, instruction);
         _beforeBodyInstruction ??= instruction;
-    }
-
-    private bool GetInstructionFromMap(Instruction instruction, [MaybeNullWhen(false)] out Instruction outInstruction)
-    {
-        if (!_instructionMap.TryGetValue(instruction, out var newInstruction))
-        {
-            outInstruction = null;
-            return false;
-        }
-
-        while (_instructionMap.TryGetValue(newInstruction, out var newInstruction2))
-        {
-            newInstruction = newInstruction2;
-        }
-
-        outInstruction = newInstruction;
-        return true;
-    }
-
-    private Instruction GetMappedInstruction(Instruction instruction) => 
-        GetInstructionFromMap(instruction, out var newInstruction) ? newInstruction : instruction;
-
-    private IEnumerable<Instruction> GetInstructionTargets(Instruction instruction)
-    {
-        return instruction.Operand switch
-        {
-            Instruction targetInstruction => [GetMappedInstruction(targetInstruction)],
-            Instruction[] targetInstructions => targetInstructions.Select(GetMappedInstruction),
-            _ => []
-        };
     }
 
     private IEnumerable<Instruction> GetInstructionNext(Instruction instruction)
@@ -239,27 +178,27 @@ public class InlineMethodWeaver
 
         return instruction.OpCode.FlowControl switch
         {
-            FlowControl.Branch => GetInstructionTargets(instruction),
-            FlowControl.Cond_Branch => [..GetInstructionTargets(instruction), instruction.Next],
+            FlowControl.Branch => _mapper.GetInstructionTargets(instruction),
+            FlowControl.Cond_Branch => [.._mapper.GetInstructionTargets(instruction), instruction.Next],
             FlowControl.Next or FlowControl.Call or FlowControl.Meta or FlowControl.Break => [instruction.Next],
             // throw, return
             _ => []
         };
     }
 
-    private void RemoveUnreachableInstructions(Instruction outer)
+    private void RemoveUnreachableInstructions()
     {
-        if (_firstBodyInstruction == null)
+        var instruction = _parentMethod.Body.Instructions.FirstOrDefault();
+        if (instruction == null)
         {
             return;
         }
 
-        var instruction = _firstBodyInstruction;
         // find reachable
         var reachableSet = new HashSet<Instruction>();
         AddReachable(instruction);
         // remove unreachable
-        while (instruction != null && instruction != outer)
+        while (instruction != null)
         {
             var nextInstruction = instruction.Next;
             if (!reachableSet.Contains(instruction))
@@ -277,7 +216,7 @@ public class InlineMethodWeaver
             reachableSet.Add(i);
             foreach (var next in GetInstructionNext(i))
             {
-                if (!reachableSet.Contains(next) && next != outer)
+                if (!reachableSet.Contains(next))
                 {
                     AddReachable(next);
                 }
@@ -285,18 +224,22 @@ public class InlineMethodWeaver
         }
     }
 
-    private void RemoveNopBranchInstructions(Instruction outer)
+    private void RemoveNopBranchInstructions()
     {
-        var instruction = _firstBodyInstruction;
-        while (instruction != null && instruction != outer)
+        var instruction = _parentMethod.Body.Instructions.FirstOrDefault();
+        while (instruction != null)
         {
             var nextInstruction = instruction.Next;
             if (instruction.OpCode.Code is Code.Br or Code.Br_S)
             {
-                var target = GetMappedInstruction((Instruction) instruction.Operand);
+                var target = _mapper.GetMappedInstruction((Instruction) instruction.Operand);
                 if (target == nextInstruction)
                 {
                     Remove(instruction);
+                } else if (target.OpCode.Code == Code.Ret)
+                {
+                    // branch to ret -> ret
+                    OpCodeHelper.ReplaceInstruction(instruction, Instruction.Create(OpCodes.Ret));
                 }
             }
 
@@ -312,11 +255,11 @@ public class InlineMethodWeaver
         }
     }
 
-    private bool ConvertConstantConditionalBranches(Instruction outer, HashSet<Instruction> targets, VarTrackers varTrackers)
+    private bool ConvertConstantConditionalBranches()
     {
         var converted = false;
-        var instruction = _firstBodyInstruction;
-        while (instruction != null && instruction != outer)
+        var instruction = _parentMethod.Body.Instructions.FirstOrDefault();
+        while (instruction != null)
         {
             var nextInstruction = instruction.Next;
             switch (instruction.OpCode.Code)
@@ -324,14 +267,14 @@ public class InlineMethodWeaver
                 // unary conditional branch
                 case Code.Brtrue or Code.Brtrue_S or Code.Brfalse or Code.Brfalse_S:
                 {
-                    var instructionHelper = new InstructionHelper(instruction, varTrackers, targets);
+                    var instructionHelper = new InstructionHelper(_parentContext, instruction);
                     if (instructionHelper.IsEvaluable())
                     {
                         var value = instructionHelper.EvalFirst();
-                        if (value != null)
+                        if (value is ValueNumber valueNumber && instructionHelper.IsRemovable)
                         {
                             RemoveAll(instructionHelper.AllPush());
-                            if (EvalHelper.IsUnaryCondition(instruction, value))
+                            if (EvalHelper.IsUnaryCondition(instruction, valueNumber))
                             {
                                 instruction.OpCode = OpCodes.Br;
                             }
@@ -342,20 +285,31 @@ public class InlineMethodWeaver
 
                             converted = true;
                         }
+                        else
+                        {
+                            if (instructionHelper.First is
+                                {OpCode.Code: Code.Ceq or Code.Clt or Code.Clt_Un or Code.Cgt or Code.Cgt_Un})
+                            {
+                                Remove(instructionHelper.First);
+                                instruction.OpCode =
+                                    OpCodeHelper.ConvertUnaryConditional(instruction, instructionHelper.First);
+                                converted = true;
+                            }
+                        }
                     }
 
                     break;
                 }
                 case Code.Switch:
                 {
-                    var instructionHelper = new InstructionHelper(instruction, varTrackers, targets);
+                    var instructionHelper = new InstructionHelper(_parentContext, instruction);
                     if (instructionHelper.IsEvaluable())
                     {
                         var value = instructionHelper.EvalFirst();
-                        if (value != null)
+                        if (value is ValueNumber valueNumber && instructionHelper.IsRemovable)
                         {
                             var switchTargets = (Instruction[])instruction.Operand;
-                            var i = value.I64Value;
+                            var i = valueNumber.I64Value;
                             RemoveAll(instructionHelper.AllPush());
                             if (i >= 0 && i < switchTargets.Length)
                             {
@@ -377,16 +331,16 @@ public class InlineMethodWeaver
                 {
                     if (OpCodeHelper.IsConditionalBranch(instruction)) // binary conditional branch
                     {
-                        var instructionHelper = new InstructionHelper(instruction, varTrackers, targets);
+                        var instructionHelper = new InstructionHelper(_parentContext, instruction);
 
                         if (instructionHelper.IsEvaluable())
                         {
                             var firstValue = instructionHelper.EvalFirst();
                             var secondValue = instructionHelper.EvalSecond();
-                            if (firstValue != null && secondValue != null)
+                            if (firstValue is ValueNumber firstValueNumber && secondValue is ValueNumber secondValueNumber && instructionHelper.IsRemovable)
                             {
                                 RemoveAll(instructionHelper.AllPush());
-                                if (EvalHelper.IsBinaryCondition(instruction, firstValue, secondValue))
+                                if (EvalHelper.IsBinaryCondition(instruction, firstValueNumber, secondValueNumber))
                                 {
                                     instruction.OpCode = OpCodes.Br;
                                 }
@@ -410,60 +364,33 @@ public class InlineMethodWeaver
         return converted;
     }
 
-    private HashSet<Instruction> FindTargets()
-    {
-        var result = new HashSet<Instruction>();
-        var instruction = _parentMethod.Body.Instructions.FirstOrDefault();
-        while (instruction != null)
-        {
-            foreach (var i in GetInstructionTargets(instruction))
-            {
-                result.Add(GetMappedInstruction(i));
-            }
-
-            instruction = instruction.Next;
-        }
-
-        return result;
-    }
-
-    private VarTrackers GetVarTrackers()
-    {
-        var trackers = new VarTrackers(_parentMethod.Body.Variables);
-        var instruction = _parentMethod.Body.Instructions.FirstOrDefault();
-        while (instruction != null)
-        {
-            trackers.Track(instruction);
-            instruction = instruction.Next;
-        }
-
-        return trackers;
-    }
-
     private void RemoveConstantVarStores()
     {
-        var targets = FindTargets();
+        _parentContext.ProcessTargets();
         bool converted;
         do
         {
             converted = false;
-            var trackers = GetVarTrackers();
-            foreach (var tracker in trackers.All)
+            _parentContext.ProcessTrackers();
+            foreach (var varTracker in _parentContext.Trackers.VarTrackers)
             {
                 // only one store
-                if (tracker is {LoadAddresses: 0, Loads: 0, StoreInstruction: not null})
+                if (varTracker is {LoadAddresses: 0, Loads: 0, Stores: 1})
                 {
-                    var instruction = tracker.StoreInstruction;
-                    var instructionHelper = new InstructionHelper(instruction, trackers, targets);
-                    // constant value
-                    if (instructionHelper.IsEvaluable())
+                    var instructionHelper = varTracker.GetInstructionHelper(new EvalContext());
+                    if (instructionHelper is {Instruction: not null})
                     {
-                        var value = instructionHelper.EvalFirst();
-                        if (value != null)
+                        // constant value
+                        if (instructionHelper.IsEvaluable())
                         {
-                            RemoveAll(instructionHelper.All());
-                            _parentMethod.Body.Variables.Remove(tracker.VariableDefinition);
-                            converted = true;
+                            var value = instructionHelper.EvalFirst();
+                            if (value?.Removable == true && instructionHelper.IsRemovable)
+                            {
+                                RemoveAll([..instructionHelper.AllPush(), instructionHelper.Instruction]);
+                                // todo handle variable removal
+                                //_parentMethod.Body.Variables.Remove(tracker.VariableDefinition);
+                                converted = true;
+                            }
                         }
                     }
                 }
@@ -471,29 +398,23 @@ public class InlineMethodWeaver
         } while (converted);
     }
 
-    private void FoldBranches(Instruction outer)
+    private void FoldBranches()
     {
-        var trackers = GetVarTrackers();
-        var converted = false;
-
+        _parentContext.ProcessTrackers();
         while (true)
         {
-            var targets = FindTargets();
+            _parentContext.ProcessTargets();
             // convert conditional branches to unconditional
-            if (!ConvertConstantConditionalBranches(outer, targets, trackers))
+            if (!ConvertConstantConditionalBranches())
             {
                 break;
             }
 
-            converted = true;
-            RemoveUnreachableInstructions(outer);
-            RemoveNopBranchInstructions(outer);
+            RemoveUnreachableInstructions();
+            RemoveNopBranchInstructions();
         }
 
-        if (converted)
-        {
-            RemoveConstantVarStores();
-        }
+        RemoveConstantVarStores();
     }
 
     private void FixInstructions()
@@ -510,7 +431,7 @@ public class InlineMethodWeaver
             {
                 case Instruction opInstruction:
                 {
-                    if (GetInstructionFromMap(opInstruction, out var newInstruction))
+                    if (_mapper.GetInstructionFromMap(opInstruction, out var newInstruction))
                     {
                         instruction.Operand = newInstruction;
                     }
@@ -521,7 +442,7 @@ public class InlineMethodWeaver
                 {
                     for (var index = 0; index < opInstructions.Length; index++)
                     {
-                        if (GetInstructionFromMap(opInstructions[index], out var newInstruction))
+                        if (_mapper.GetInstructionFromMap(opInstructions[index], out var newInstruction))
                         {
                             opInstructions[index] = newInstruction;
                         }
@@ -606,41 +527,6 @@ public class InlineMethodWeaver
             }
 
             instruction = nextInstruction;
-        }
-    }
-
-    private void FindSkipArgsReferences()
-    {
-        if (_pushInstructions.Length == 0)
-        {
-            return;
-        }
-
-        var closestOffsetBeforeCall = -1;
-        foreach (var opInstruction in GetReferencedInstructions(_parentMethod.Body.Instructions.FirstOrDefault()))
-        {
-            if (opInstruction == _callInstruction)
-            {
-                closestOffsetBeforeCall = opInstruction.Offset;
-                break;
-            }
-
-            if (opInstruction.Offset < _callInstruction.Offset && opInstruction.Offset > closestOffsetBeforeCall)
-            {
-                closestOffsetBeforeCall = opInstruction.Offset;
-            }
-        }
-
-        if (closestOffsetBeforeCall >= 0)
-        {
-            for (var i = 0; i < _pushInstructions.Length; i++)
-            {
-                var pushInstruction = _pushInstructions[i];
-                if (pushInstruction != null && closestOffsetBeforeCall > pushInstruction.Offset)
-                {
-                    _pushInstructions[i] = null;
-                }
-            }
         }
     }
 
@@ -958,17 +844,19 @@ public class InlineMethodWeaver
 
     public void Process()
     {
+        AnalyzeResolveDelegates();
+
         var callSequencePoint = _parentMethod.DebugInformation.HasSequencePoints ? _parentMethod.DebugInformation.GetSequencePoint(_callInstruction) : null;
         CreateVars();
         CreateArgs();
         AnalyzeArgs();
 
+        var callInstructionNext = _callInstruction.Next;
         var innerVariables = _method.Body.Variables;
         var parentVariables = _parentMethod.Body.Variables;
 
         // inline body
         var instructions = _method.Body.Instructions;
-        var callInstructionNext = _callInstruction.Next;
         foreach (var instruction in instructions)
         {
             var nextInstruction = instruction.Next;
@@ -984,7 +872,7 @@ public class InlineMethodWeaver
                 {
                     if (isFirst)
                     {
-                        _instructionMap[instruction] = argInstruction;
+                        _mapper.Map(instruction, argInstruction);
                         isFirst = false;
                     }
                     AppendToBody(argInstruction);
@@ -1023,6 +911,17 @@ public class InlineMethodWeaver
                 newInstruction = Instruction.Create(OpCodes.Br, callInstructionNext);
             }
 
+            // resolve delegate
+            if (_resolveDelegates.TryGetValue(instruction, out var resolveDelegate))
+            {
+                var instanceAllInstructions = resolveDelegate.DelegateInstanceAllInstructions.Select(i => _mapper.GetMappedInstruction(i)).ToList();
+                // delegate.Invoke(...) -> instance.Method(...)
+                // push delegate, push args, call Delegate::Invoke -> push methodInstance, push args, call Method
+                InsertAfter(instanceAllInstructions.Last(), OpCodeHelper.Clone(resolveDelegate.MethodInstanceInstruction));
+                RemoveAll(instanceAllInstructions);
+                newInstruction = Instruction.Create(OpCodes.Callvirt, resolveDelegate.Method);
+            }
+
             newInstruction ??= OpCodeHelper.Clone(instruction);
 
             // import references / resolve generics
@@ -1056,7 +955,7 @@ public class InlineMethodWeaver
                 newInstruction.Operand = _moduleWeaver.ModuleDefinition.ImportReference(opTypeReference, _parentMethod);
             }
 
-            _instructionMap[instruction] = newInstruction;
+            _mapper.Map(instruction, newInstruction);
             AppendToBody(newInstruction);
         }
 
@@ -1066,10 +965,10 @@ public class InlineMethodWeaver
         var callInstructionTarget = _beforeBodyInstruction ?? _firstBodyInstruction;
         if (callInstructionTarget != null)
         {
-            _instructionMap[_callInstruction] = callInstructionTarget;
+            _mapper.Map(_callInstruction, callInstructionTarget);
         }
 
-        FoldBranches(callInstructionNext);
+        FoldBranches();
         FixInstructions();
 
         if (_parentMethod.DebugInformation.HasSequencePoints && _firstBodyInstruction != null && callSequencePoint != null)
@@ -1093,6 +992,108 @@ public class InlineMethodWeaver
                     EndLine = callSequencePoint.EndLine,
                     EndColumn = callSequencePoint.EndColumn
                 });
+        }
+
+        InlineDelegates();
+    }
+
+    private CustomAttribute? GetResolveDelegate(ParameterDefinition parameter)
+        => parameter.CustomAttributes.FirstOrDefault(attr =>
+            attr.AttributeType.FullName == "InlineMethod.ResolveDelegateAttribute");
+
+    private bool IsResolveDelegateInline(CustomAttribute attr)
+        => attr.ConstructorArguments.First().Value is true;
+
+    private class ResolveDelegateInfo(
+        Instruction callInstruction,
+        MethodReference method,
+        Instruction methodInstanceInstruction,
+        Instruction[] delegateInstanceAllInstructions,
+        bool inline)
+    {
+        public Instruction CallInstruction => callInstruction;
+        public MethodReference Method => method;
+        public Instruction MethodInstanceInstruction => methodInstanceInstruction;
+        public Instruction[] DelegateInstanceAllInstructions => delegateInstanceAllInstructions;
+        public bool Inline => inline;
+    }
+
+    private readonly Dictionary<Instruction, ResolveDelegateInfo> _resolveDelegates = [];
+
+    private void AnalyzeResolveDelegates()
+    {
+        if (_method.Parameters.All(p => GetResolveDelegate(p) == null))
+        {
+            return;
+        }
+
+        var parentContext = new Context(_parentMethod, new InstructionMapper());
+        var context = new Context(_method, new InstructionMapper());
+        parentContext.Process(_callInstruction);
+        context.Process();
+
+        for (var i = 0; i < _parameters.Count; i++)
+        {
+            var parameter = _parameters[i];
+            if (GetResolveDelegate(parameter) != null)
+            {
+                if (!TypeHelper.IsDelegateType(parameter.ParameterType))
+                {
+                    _moduleWeaver.WriteWarning($"Cannot resolve delegate for `{parameter}` of `{_method.FullName}`");
+                    continue;
+                }
+
+                context.Trackers.Add(new ArgTracker(parentContext, parameter, _pushInstructions[i]));
+            }
+        }
+
+        if (!context.Trackers.ArgTrackers.Any())
+        {
+            return;
+        }
+
+        foreach (var instruction in _method.Body.Instructions)
+        {
+            // Delegate.Invoke
+            if (instruction.OpCode.Code == Code.Callvirt && instruction.Operand is MethodReference { HasThis: true, Name: "Invoke"} calledMethod)
+            {
+                var calledMethodDefinition = calledMethod.Resolve();
+                if (calledMethodDefinition != null && TypeHelper.IsDelegateType(calledMethodDefinition.DeclaringType))
+                {
+                    var instructionHelper = new InstructionHelper(context, instruction);
+                    if (instructionHelper.IsEvaluable())
+                    {
+                        var callee = instructionHelper.EvalFirst();
+                        // value -> new (<>c.instance, Method)
+                        if (callee is ValueNewObject {Arguments.Length: 2} delegateObject &&
+                            delegateObject.Arguments[0] is ValueNewObject {Arguments.Length: 0} &&
+                            delegateObject.Arguments[1] is ValueMethod method && delegateObject.InstructionHelper.First != null &&
+                            OpCodeHelper.IsLoadSFld(delegateObject.InstructionHelper.First))
+                        {
+                            // inline?
+                            var inline = callee.EvalContext.Trackers
+                                .OfType<ArgTracker>()
+                                .Select(argTracker => GetResolveDelegate(argTracker.ParameterDefinition))
+                                .Any(attr => attr != null && IsResolveDelegateInline(attr));
+
+                            // (new (<>c.instance, Method)).Invoke(...) -> <>c.instance.Method(...)
+                            _resolveDelegates.Add(instruction,
+                                new ResolveDelegateInfo(instruction, method.Method,
+                                    delegateObject.InstructionHelper.First,
+                                    [.. instructionHelper.FirstPush.All], inline));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private void InlineDelegates()
+    {
+        foreach (var resolveDelegate in _resolveDelegates.Values.Where(resolveDelegate => resolveDelegate.Inline))
+        {
+            var callInstruction = _mapper.GetMappedInstruction(resolveDelegate.CallInstruction);
+            _moduleWeaver.ProcessCallInstruction(callInstruction, _parentMethod, true);
         }
     }
 }
