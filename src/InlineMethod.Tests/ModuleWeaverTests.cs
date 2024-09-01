@@ -222,6 +222,13 @@ public class ModuleWeaverTests(ITestOutputHelper testOutputHelper)
     }
 
     [Fact]
+    public void FoldVar2()
+    {
+        var type = ModuleDefinition.GetType($"{Namespace}.FoldVar2");
+        CheckSimpleClass(type);
+    }
+
+    [Fact]
     public void ArgBranch()
     {
         var type = ModuleDefinition.GetType($"{Namespace}.ArgBranch");

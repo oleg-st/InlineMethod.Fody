@@ -8,6 +8,7 @@ using InlineMethod.Fody.Helper.Cecil;
 using InlineMethod.Fody.Helper.Eval;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
+using Mono.Collections.Generic;
 
 namespace InlineMethod.Fody;
 
@@ -364,8 +365,41 @@ public class InlineMethodWeaver
         return converted;
     }
 
+    private void RemoveVariables(HashSet<VariableDefinition> variablesToRemove)
+    {
+        // copy old variables
+        var oldVariables = new Collection<VariableDefinition>(_parentMethod.Body.Variables);
+        // remove variables
+        foreach (var variableDefinition in variablesToRemove)
+        {
+            _parentMethod.Body.Variables.Remove(variableDefinition);
+        }
+
+        // adjust variable instructions
+        foreach (var instruction in _parentMethod.Body.Instructions)
+        {
+            var variableDefinition = OpCodeHelper.GetLocVariableDefinition(instruction, oldVariables);
+            if (variableDefinition != null)
+            {
+                if (OpCodeHelper.IsLoadLoc(instruction))
+                {
+                    OpCodeHelper.ReplaceInstruction(instruction, OpCodeHelper.CreateLoadLoc(variableDefinition));
+                }
+                else if (OpCodeHelper.IsStoreLoc(instruction))
+                {
+                    OpCodeHelper.ReplaceInstruction(instruction, OpCodeHelper.CreateStoreLoc(variableDefinition));
+                }
+                else if (OpCodeHelper.IsLoadLocA(instruction))
+                {
+                    OpCodeHelper.ReplaceInstruction(instruction, OpCodeHelper.CreateLoadLocA(variableDefinition));
+                }
+            }
+        }
+    }
+
     private void RemoveConstantVarStores()
     {
+        var variablesToRemove = new HashSet<VariableDefinition>();
         _parentContext.ProcessTargets();
         bool converted;
         do
@@ -387,8 +421,7 @@ public class InlineMethodWeaver
                             if (value?.Removable == true && instructionHelper.IsRemovable)
                             {
                                 RemoveAll([..instructionHelper.AllPush(), instructionHelper.Instruction]);
-                                // todo handle variable removal
-                                //_parentMethod.Body.Variables.Remove(tracker.VariableDefinition);
+                                variablesToRemove.Add(varTracker.VariableDefinition);
                                 converted = true;
                             }
                         }
@@ -396,6 +429,11 @@ public class InlineMethodWeaver
                 }
             }
         } while (converted);
+
+        if (variablesToRemove.Any())
+        {
+            RemoveVariables(variablesToRemove);
+        }
     }
 
     private void FoldBranches()
