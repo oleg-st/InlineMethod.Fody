@@ -590,7 +590,10 @@ public class InlineMethodWeaver
         [MemberNotNull(nameof(_variableDefinition))]
         private void CreateVariableDefinition()
         {
-            _variableDefinition = new VariableDefinition(inlineMethodWeaver._parameters[paramIndex].ParameterType);
+            var parameterDefinition = inlineMethodWeaver._parameters[paramIndex];
+            _variableDefinition = new VariableDefinition(inlineMethodWeaver._typeResolver != null
+                ? inlineMethodWeaver._typeResolver.ResolveParameterType(inlineMethodWeaver._method, parameterDefinition)
+                : parameterDefinition.ParameterType);
             inlineMethodWeaver._parentMethod.Body.Variables.Add(_variableDefinition);
         }
 
