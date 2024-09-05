@@ -134,9 +134,11 @@ public class InlineMethodWeaver
         // add inner variables to parent
         foreach (var var in _method.Body.Variables)
         {
-            variables.Add(new VariableDefinition(_typeResolver != null
+            var typeReference = _typeResolver != null
                 ? _typeResolver.ResolveVariableType(_method, var)
-                : var.VariableType));
+                : var.VariableType;
+            typeReference = _moduleWeaver.ModuleDefinition.ImportReference(typeReference, _parentMethod);
+            variables.Add(new VariableDefinition(typeReference));
         }
     }
 
@@ -591,9 +593,12 @@ public class InlineMethodWeaver
         private void CreateVariableDefinition()
         {
             var parameterDefinition = inlineMethodWeaver._parameters[paramIndex];
-            _variableDefinition = new VariableDefinition(inlineMethodWeaver._typeResolver != null
+            var typeReference = inlineMethodWeaver._typeResolver != null
                 ? inlineMethodWeaver._typeResolver.ResolveParameterType(inlineMethodWeaver._method, parameterDefinition)
-                : parameterDefinition.ParameterType);
+                : parameterDefinition.ParameterType;
+            typeReference = inlineMethodWeaver._moduleWeaver.ModuleDefinition.ImportReference(typeReference,
+                inlineMethodWeaver._parentMethod);
+            _variableDefinition = new VariableDefinition(typeReference);
             inlineMethodWeaver._parentMethod.Body.Variables.Add(_variableDefinition);
         }
 
