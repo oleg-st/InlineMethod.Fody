@@ -90,15 +90,18 @@ public sealed class StaticFieldTracker : Tracker
     public StaticFieldTracker(Context context, FieldDefinition fieldDefinition) : base(context)
     {
         FieldDefinition = fieldDefinition;
-        // field is static and init only -> scan static constructor
-        if (FieldDefinition is {IsInitOnly: true, IsStatic: true})
+        // field is static -> scan static constructor
+        if (FieldDefinition is {IsStatic: true})
         {
             var staticConstructor = FieldDefinition.DeclaringType.Methods.FirstOrDefault(m => m.IsStatic && m.IsConstructor);
             if (staticConstructor is {HasBody: true})
             {
                 foreach (var instruction in staticConstructor.Body.Instructions)
                 {
-                    TrackInstruction(instruction);
+                    if (instruction.Operand is FieldReference opFieldReference && opFieldReference.Resolve() == fieldDefinition)
+                    {
+                        TrackInstruction(instruction);
+                    }
                 }
             }
         }
@@ -142,8 +145,9 @@ public class Trackers
             return varTracker;
         }
 
-        if (instruction.Operand is FieldDefinition fieldDefinition)
+        if (instruction.Operand is FieldReference fieldReference)
         {
+            var fieldDefinition = fieldReference.Resolve();
             if (!_staticFieldTrackers.TryGetValue(fieldDefinition, out var fieldTracker))
             {
                 fieldTracker = new StaticFieldTracker(context, fieldDefinition);
