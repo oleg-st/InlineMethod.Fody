@@ -4,7 +4,7 @@ using Mono.Cecil.Cil;
 
 namespace InlineMethod.Fody.Helper;
 
-public class PushHelper(Instruction? instruction, PushScanner.Sequences? sequences)
+public class PushHelper(Instruction? instruction, PushScanner.Sequences? sequences, bool hasSideEffects = false)
 {
     // single push instruction if exists
     public Instruction? Instruction { get; } = instruction;
@@ -30,6 +30,11 @@ public class PushHelper(Instruction? instruction, PushScanner.Sequences? sequenc
                 return sequence.PushInstruction != null && !sequence.PushEscaped
                     ? sequence.Nodes.SkipWhile(p => p != sequence.PushInstruction).Reverse()
                     : [];
+            }
+
+            if (hasSideEffects)
+            {
+                return [];
             }
 
             // we don't have side effects, so remove all

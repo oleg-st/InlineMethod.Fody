@@ -271,6 +271,7 @@ public class PushScanner(Targets targets, Instruction tail)
         // single push instruction
         Instruction? pushInstruction = null;
         Sequences? pushSequences = null;
+        var hasSideEffects = false;
         switch (sequences.Items.Count)
         {
             // single sequence
@@ -290,8 +291,9 @@ public class PushScanner(Targets targets, Instruction tail)
             case 2:
             {
                 // try to extend to common instruction, check some side effects
-                if (sequences.Extend() && sequences.Items.SelectMany(s => s.Nodes.Skip(1)).All(s => !HasSideEffects(s)))
+                if (sequences.Extend())
                 {
+                    hasSideEffects = sequences.Items.SelectMany(s => s.Nodes.Skip(1)).Any(HasSideEffects);
                     startInstruction = sequences.Items[0].Last;
                     pushSequences = sequences;
                 }
@@ -302,7 +304,7 @@ public class PushScanner(Targets targets, Instruction tail)
         }
 
         currentInstruction = startInstruction;
-        return new PushHelper(pushInstruction, pushSequences);
+        return new PushHelper(pushInstruction, pushSequences, hasSideEffects);
     }
 
     public PushHelper[] Scan()

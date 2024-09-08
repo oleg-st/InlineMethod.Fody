@@ -960,12 +960,26 @@ public class InlineMethodWeaver
             // resolve delegate
             if (_resolveDelegates.TryGetValue(instruction, out var resolveDelegate))
             {
-                var instanceAllInstructions = resolveDelegate.DelegateInstanceAllInstructions.Select(i => _mapper.GetMappedInstruction(i)).ToList();
+                _parentContext.ProcessTargets();
+                var clonedCallInstruction = OpCodeHelper.Clone(instruction);
+                clonedCallInstruction.Previous = _callInstruction.Previous;
+                var instructionHelper = new InstructionHelper(_parentContext, clonedCallInstruction);
+                var first = instructionHelper.FirstPush;
                 // delegate.Invoke(...) -> instance.Method(...)
-                // push delegate, push args, call Delegate::Invoke -> push methodInstance, push args, call Method
-                InsertAfter(instanceAllInstructions.Last(), OpCodeHelper.Clone(resolveDelegate.MethodInstanceInstruction));
-                RemoveAll(instanceAllInstructions);
-                newInstruction = Instruction.Create(OpCodes.Callvirt, resolveDelegate.Method);
+                // replace first argument (delegate -> instance), replace method (Invoke -> Method)
+                if (first.IsRemovable)
+                {
+                    var instanceAllInstructions = first.All.ToList();
+                    // push delegate, push args, call Delegate::Invoke -> push methodInstance, push args, call Method
+                    InsertAfter(instanceAllInstructions.Last(),
+                        OpCodeHelper.Clone(resolveDelegate.MethodInstanceInstruction));
+                    RemoveAll(instanceAllInstructions);
+                    newInstruction = Instruction.Create(OpCodes.Callvirt, resolveDelegate.Method);
+                }
+                else
+                {
+                    resolveDelegate.Inline = false;
+                }
             }
 
             newInstruction ??= OpCodeHelper.Clone(instruction);
@@ -1054,14 +1068,12 @@ public class InlineMethodWeaver
         Instruction callInstruction,
         MethodReference method,
         Instruction methodInstanceInstruction,
-        Instruction[] delegateInstanceAllInstructions,
         bool inline)
     {
         public Instruction CallInstruction => callInstruction;
         public MethodReference Method => method;
         public Instruction MethodInstanceInstruction => methodInstanceInstruction;
-        public Instruction[] DelegateInstanceAllInstructions => delegateInstanceAllInstructions;
-        public bool Inline => inline;
+        public bool Inline { get; set; } = inline;
     }
 
     private readonly Dictionary<Instruction, ResolveDelegateInfo> _resolveDelegates = [];
@@ -1126,7 +1138,7 @@ public class InlineMethodWeaver
                             _resolveDelegates.Add(instruction,
                                 new ResolveDelegateInfo(instruction, method.Method,
                                     delegateObject.InstructionHelper.First,
-                                    [.. instructionHelper.FirstPush.All], inline));
+                                    inline));
                         }
                     }
                 }
