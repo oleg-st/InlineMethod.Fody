@@ -243,6 +243,27 @@ public class ModuleWeaverTests(ITestOutputHelper testOutputHelper)
     }
 
     [Fact]
+    public void InlineDelegate2()
+    {
+        var type = ModuleDefinition.GetType($"{Namespace}.InlineDelegate2`1");
+        CheckSimpleClass(type);
+    }
+
+    [Fact]
+    public void InlineGeneric()
+    {
+        var type = ModuleDefinition.GetType($"{Namespace}.InlineGeneric`1");
+        CheckSimpleClass(type);
+    }
+
+    [Fact]
+    public void InlineGeneric2()
+    {
+        var type = ModuleDefinition.GetType($"{Namespace}.InlineGeneric2`1");
+        CheckSimpleClass(type);
+    }
+
+    [Fact]
     public void WithException()
     {
         var type = ModuleDefinition.GetType($"{Namespace}.WithException");

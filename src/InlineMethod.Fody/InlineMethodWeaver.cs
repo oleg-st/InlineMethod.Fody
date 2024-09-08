@@ -81,9 +81,21 @@ public class InlineMethodWeaver
 
         _args = new Arg[_pushInstructions.Length];
 
-        _typeResolver = _callInstruction.Operand is GenericInstanceMethod genericInstanceMethod
-            ? new TypeResolver(genericInstanceMethod)
-            : null;
+        if (_callInstruction.Operand is MethodReference methodReference)
+        {
+            if (methodReference is GenericInstanceMethod genericInstanceMethod)
+            {
+                _typeResolver = new TypeResolver(genericInstanceMethod);
+            }
+            else if (methodReference.DeclaringType is GenericInstanceType genericInstanceType)
+            {
+                _typeResolver = new TypeResolver(genericInstanceType);
+            }
+            else
+            {
+                _typeResolver = null;
+            }
+        }
     }
 
     private class ArgStack(IEnumerable<Arg> args)
