@@ -251,10 +251,21 @@ public class InlineMethodWeaver
                 if (target == nextInstruction)
                 {
                     Remove(instruction);
-                } else if (target.OpCode.Code == Code.Ret)
+                    _parentContext.Targets.Remove(instruction, target);
+                }
+                else if (target.OpCode.Code == Code.Ret)
                 {
                     // branch to ret -> ret
                     OpCodeHelper.ReplaceInstruction(instruction, Instruction.Create(OpCodes.Ret));
+                    _parentContext.Targets.Remove(instruction, target);
+                }
+            }
+            else if (instruction.OpCode.Code == Code.Ret)
+            {
+                // unreachable
+                if (!_parentContext.Targets.GetPrevious(instruction).Any())
+                {
+                    Remove(instruction);
                 }
             }
 
@@ -453,9 +464,9 @@ public class InlineMethodWeaver
     private void FoldBranches()
     {
         _parentContext.ProcessTrackers();
+        _parentContext.ProcessTargets();
         while (true)
         {
-            _parentContext.ProcessTargets();
             // convert conditional branches to unconditional
             if (!ConvertConstantConditionalBranches())
             {
@@ -463,6 +474,7 @@ public class InlineMethodWeaver
             }
 
             RemoveUnreachableInstructions();
+            _parentContext.ProcessTargets();
             RemoveNopBranchInstructions();
         }
 

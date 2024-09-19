@@ -23,6 +23,26 @@ public class Targets(Collection<Instruction> instructions)
 
     public bool Contains(Instruction source) => _targets.ContainsKey(source);
 
+    public bool Remove(Instruction instruction, Instruction target)
+    {
+        if (!_targets.TryGetValue(target, out var sources))
+        {
+            return false;
+        }
+
+        if (!sources.Remove(instruction))
+        {
+            return false;
+        }
+
+        if (sources.Count == 0)
+        {
+            _targets.Remove(target);
+        }
+
+        return true;
+    }
+
     public bool TryGetSources(Instruction target, out List<Instruction> sources)
         => _targets.TryGetValue(target, out sources);
 
