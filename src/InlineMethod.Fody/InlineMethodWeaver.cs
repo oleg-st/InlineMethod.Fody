@@ -981,31 +981,6 @@ public class InlineMethodWeaver
                 newInstruction = Instruction.Create(OpCodes.Br, callInstructionNext);
             }
 
-            // resolve delegate
-            if (_resolveDelegates.TryGetValue(instruction, out var resolveDelegate))
-            {
-                _parentContext.ProcessTargets();
-                var clonedCallInstruction = OpCodeHelper.Clone(instruction);
-                clonedCallInstruction.Previous = _callInstruction.Previous;
-                var instructionHelper = new InstructionHelper(_parentContext, clonedCallInstruction);
-                var first = instructionHelper.FirstPush;
-                // delegate.Invoke(...) -> instance.Method(...)
-                // replace first argument (delegate -> instance), replace method (Invoke -> Method)
-                if (first.IsRemovable)
-                {
-                    var instanceAllInstructions = first.All.ToList();
-                    // push delegate, push args, call Delegate::Invoke -> push methodInstance, push args, call Method
-                    InsertAfter(instanceAllInstructions.Last(),
-                        OpCodeHelper.Clone(resolveDelegate.MethodInstanceInstruction));
-                    RemoveAll(instanceAllInstructions);
-                    newInstruction = Instruction.Create(OpCodes.Callvirt, resolveDelegate.Method);
-                }
-                else
-                {
-                    resolveDelegate.Inline = false;
-                }
-            }
-
             newInstruction ??= OpCodeHelper.Clone(instruction);
 
             // import references / resolve generics
@@ -1037,6 +1012,31 @@ public class InlineMethodWeaver
                 }
 
                 newInstruction.Operand = _moduleWeaver.ModuleDefinition.ImportReference(opTypeReference, _parentMethod);
+            }
+
+            // resolve delegate
+            if (_resolveDelegates.TryGetValue(instruction, out var resolveDelegate))
+            {
+                _parentContext.ProcessTargets();
+                var clonedCallInstruction = OpCodeHelper.Clone(instruction);
+                clonedCallInstruction.Previous = _callInstruction.Previous;
+                var instructionHelper = new InstructionHelper(_parentContext, clonedCallInstruction);
+                var first = instructionHelper.FirstPush;
+                // delegate.Invoke(...) -> instance.Method(...)
+                // replace first argument (delegate -> instance), replace method (Invoke -> Method)
+                if (first.IsRemovable)
+                {
+                    var instanceAllInstructions = first.All.ToList();
+                    // push delegate, push args, call Delegate::Invoke -> push methodInstance, push args, call Method
+                    InsertAfter(instanceAllInstructions.Last(),
+                        OpCodeHelper.Clone(resolveDelegate.MethodInstanceInstruction));
+                    RemoveAll(instanceAllInstructions);
+                    newInstruction = Instruction.Create(OpCodes.Callvirt, resolveDelegate.Method);
+                }
+                else
+                {
+                    resolveDelegate.Inline = false;
+                }
             }
 
             _mapper.Map(instruction, newInstruction);
