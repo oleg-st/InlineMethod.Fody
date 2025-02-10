@@ -467,6 +467,8 @@ public class InlineMethodWeaver
         _parentContext.ProcessTargets();
         while (true)
         {
+            RemoveNopBranchInstructions();
+
             // convert conditional branches to unconditional
             if (!ConvertConstantConditionalBranches())
             {
@@ -475,7 +477,6 @@ public class InlineMethodWeaver
 
             RemoveUnreachableInstructions();
             _parentContext.ProcessTargets();
-            RemoveNopBranchInstructions();
         }
 
         RemoveConstantVarStores();
@@ -603,6 +604,8 @@ public class InlineMethodWeaver
         public ArgStrategy Strategy { get; private set; }
         private VariableDefinition? _variableDefinition;
         private List<Instruction>? _allPushInstructions;
+
+        private readonly bool _hasInlineParameter = inlineMethodWeaver.GetInlineParameter(inlineMethodWeaver._parameters[paramIndex]) != null;
 
         public void TrackInstruction(Instruction instruction)
         {
@@ -734,7 +737,7 @@ public class InlineMethodWeaver
 
         private bool CanRemovePush => PushInstruction != null && (PushInstruction.OpCode.StackBehaviourPop == StackBehaviour.Pop0 || CanInline);
 
-        private bool CanInline => _onlyLoad && CanInlineInstruction(PushInstruction, Usages);
+        private bool CanInline => _onlyLoad && (_hasInlineParameter || CanInlineInstruction(PushInstruction, Usages));
 
         [MemberNotNullWhen(true, nameof(PushInstruction))]
         public bool HasPush => PushInstruction != null;
@@ -1084,6 +1087,10 @@ public class InlineMethodWeaver
     private CustomAttribute? GetResolveDelegate(ParameterDefinition parameter)
         => parameter.CustomAttributes.FirstOrDefault(attr =>
             attr.AttributeType.FullName == "InlineMethod.ResolveDelegateAttribute");
+
+    private CustomAttribute? GetInlineParameter(ParameterDefinition parameter)
+        => parameter.CustomAttributes.FirstOrDefault(attr =>
+            attr.AttributeType.FullName == "InlineMethod.InlineParameterAttribute");
 
     private bool IsResolveDelegateInline(CustomAttribute attr)
         => attr.ConstructorArguments.First().Value is true;
