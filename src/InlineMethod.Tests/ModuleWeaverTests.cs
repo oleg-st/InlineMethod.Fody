@@ -276,4 +276,11 @@ public class ModuleWeaverTests(ITestOutputHelper testOutputHelper)
         var type = ModuleDefinition.GetType($"{Namespace}.LateEvaluation");
         CheckSimpleClass(type);
     }
+
+    [Fact]
+    public void ExceptionHandler()
+    {
+        var type = ModuleDefinition.GetType($"{Namespace}.ExceptionHandler");
+        CheckSimpleClass(type);
+    }
 }

@@ -212,6 +212,11 @@ public class InlineMethodWeaver
         // find reachable
         var reachableSet = new HashSet<Instruction>();
         AddReachable(instruction);
+        foreach (var exceptionHandler in _parentMethod.Body.ExceptionHandlers)
+        {
+            AddReachable(exceptionHandler.HandlerStart);
+        }
+
         // remove unreachable
         while (instruction != null)
         {
