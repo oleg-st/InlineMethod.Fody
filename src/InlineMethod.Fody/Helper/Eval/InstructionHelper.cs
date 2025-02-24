@@ -14,6 +14,9 @@ public class InstructionHelper
 
     public PushHelper FirstPush => PushInstructions[0];
     public Instruction? First => FirstPush.Instruction;
+    public PushHelper LastPush => PushInstructions.Last();
+    public Instruction? Last => LastPush.Instruction;
+
     public bool IsRemovable => PushInstructions.All(p => p.IsRemovable);
 
     private Value? Eval(PushHelper pushHelper)
@@ -47,6 +50,8 @@ public class InstructionHelper
     public Value? EvalFirst() => Eval(PushInstructions[0]);
 
     public Value? EvalSecond() => Eval(PushInstructions[1]);
+
+    public Value? EvalLast() => Eval(PushInstructions.Last());
 
     public InstructionHelper(Context context, Instruction instruction) : this(context, new EvalContext(), instruction)
     {

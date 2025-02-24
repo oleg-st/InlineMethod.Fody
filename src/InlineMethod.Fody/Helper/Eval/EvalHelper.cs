@@ -7,6 +7,35 @@ namespace InlineMethod.Fody.Helper.Eval;
 
 internal static class EvalHelper
 {
+    public static Value? GetTrackerValue(Tracker tracker, EvalContext evalContext)
+    {
+        if (evalContext.GetTrackerValue(tracker, out var trackerValue))
+        {
+            return trackerValue;
+        }
+
+        evalContext.StartTracker(tracker);
+        var instructionHelpers = tracker.GetInstructionHelpers(evalContext);
+        if (instructionHelpers.Count == 0 ||
+            !instructionHelpers.All(instructionHelper => instructionHelper.IsEvaluable()))
+        {
+            return null;
+        }
+
+        var firstValue = instructionHelpers.First().EvalFirst();
+        if (firstValue == null || !instructionHelpers.Skip(1).All(instructionHelper =>
+            {
+                var value = instructionHelper.EvalFirst();
+                return value != null && firstValue.Equals(value);
+            }))
+        {
+            return null;
+        }
+
+        evalContext.FinishTracker(tracker, firstValue);
+        return firstValue;
+    }
+
     // Eval const expression
     public static Value? Eval(Context context, EvalContext evalContext, Instruction? instruction)
     {
@@ -18,14 +47,7 @@ internal static class EvalHelper
         var tracker = context.GetTracker(instruction);
         if (tracker != null && tracker.IsLoad(instruction))
         {
-            evalContext.AddTracker(tracker);
-            var instructionHelper = tracker.GetInstructionHelper(evalContext);
-            if (instructionHelper == null || !instructionHelper.IsEvaluable())
-            {
-                return null;
-            }
-
-            return instructionHelper.EvalFirst();
+            return GetTrackerValue(tracker, evalContext);
         }
 
         var op = new InstructionHelper(context, evalContext, instruction);

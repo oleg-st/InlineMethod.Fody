@@ -16,7 +16,7 @@ public abstract class Tracker(Context context)
 
     public abstract bool IsLoad(Instruction instruction);
 
-    public abstract InstructionHelper? GetInstructionHelper(EvalContext evalContext);
+    public abstract ICollection<InstructionHelper> GetInstructionHelpers(EvalContext evalContext);
 }
 
 public sealed class ArgTracker : Tracker
@@ -50,13 +50,13 @@ public sealed class ArgTracker : Tracker
         Stores++;
     }
 
-    public override InstructionHelper? GetInstructionHelper(EvalContext evalContext) =>
-        Stores == 1 && LoadAddresses == 0 ? new InstructionHelper(Context, evalContext, [_pushHelper]) : null;
+    public override ICollection<InstructionHelper> GetInstructionHelpers(EvalContext evalContext) =>
+        Stores == 1 && LoadAddresses == 0 ? [new InstructionHelper(Context, evalContext, [_pushHelper])] : [];
 }
 
 public sealed class VarTracker(Context context, VariableDefinition variableDefinition) : Tracker(context)
 {
-    private Instruction? _storeInstruction;
+    private readonly List<Instruction> _storeInstructions = [];
     public int Loads { get; private set; }
     public int LoadAddresses { get; private set; }
     public VariableDefinition VariableDefinition => variableDefinition;
@@ -65,7 +65,7 @@ public sealed class VarTracker(Context context, VariableDefinition variableDefin
     {
         if (OpCodeHelper.IsStoreLoc(instruction))
         {
-            _storeInstruction ??= instruction;
+            _storeInstructions.Add(instruction);
             Stores++;
         } else if (OpCodeHelper.IsLoadLoc(instruction))
         {
@@ -79,8 +79,11 @@ public sealed class VarTracker(Context context, VariableDefinition variableDefin
     public override bool IsLoad(Instruction instruction) => 
         OpCodeHelper.IsLoadLoc(instruction);
 
-    public override InstructionHelper? GetInstructionHelper(EvalContext evalContext)
-        => Stores == 1 && LoadAddresses == 0 && _storeInstruction != null ? new InstructionHelper(Context, evalContext, _storeInstruction) : null;
+    public override ICollection<InstructionHelper> GetInstructionHelpers(EvalContext evalContext)
+        => Stores > 0 && LoadAddresses == 0
+            ? _storeInstructions
+                .Select(storeInstruction => new InstructionHelper(Context, evalContext, storeInstruction)).ToList()
+            : [];
 }
 
 public sealed class StaticFieldTracker : Tracker
@@ -107,13 +110,13 @@ public sealed class StaticFieldTracker : Tracker
         }
     }
 
-    private Instruction? _storeInstruction;
+    private readonly List<Instruction> _storeInstructions = [];
 
     public override void TrackInstruction(Instruction instruction)
     {
         if (OpCodeHelper.IsStoreSFld(instruction))
         {
-            _storeInstruction ??= instruction;
+            _storeInstructions.Add(instruction);
             Stores++;
         }
     }
@@ -121,8 +124,11 @@ public sealed class StaticFieldTracker : Tracker
     public override bool IsLoad(Instruction instruction) => 
         OpCodeHelper.IsLoadSFld(instruction);
 
-    public override InstructionHelper? GetInstructionHelper(EvalContext evalContext)
-        => Stores == 1 && _storeInstruction != null ? new InstructionHelper(Context, evalContext, _storeInstruction) : null;
+    public override ICollection<InstructionHelper> GetInstructionHelpers(EvalContext evalContext)
+        => Stores > 0
+            ? _storeInstructions
+                .Select(storeInstruction => new InstructionHelper(Context, evalContext, storeInstruction)).ToList()
+            : [];
 }
 
 public class Trackers

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using InlineMethod.Fody.Extensions;
@@ -286,6 +287,37 @@ public class InlineMethodWeaver
         }
     }
 
+    private bool ConvertIndirectCalls()
+    {
+        _parentContext.Process();
+
+        var converted = false;
+        var instruction = _parentMethod.Body.Instructions.FirstOrDefault();
+        while (instruction != null)
+        {
+            var nextInstruction = instruction.Next;
+            if (instruction.OpCode.Code == Code.Calli && instruction.Operand is CallSite {CallingConvention: MethodCallingConvention.Default})
+            {
+                var instructionHelper = new InstructionHelper(_parentContext, instruction);
+                if (instructionHelper is {Last: not null, LastPush.IsEvaluable: true})
+                {
+                    var value = instructionHelper.EvalLast();
+                    if (value is ValueMethod valueMethod)
+                    {
+                        Remove(instructionHelper.Last);
+                        instruction.OpCode = OpCodes.Call;
+                        instruction.Operand = valueMethod.Method;
+                        converted = true;
+                    }
+                }
+            }
+
+            instruction = nextInstruction;
+        }
+
+        return converted;
+    }
+
     private bool ConvertConstantConditionalBranches()
     {
         var converted = false;
@@ -438,22 +470,24 @@ public class InlineMethodWeaver
             _parentContext.ProcessTrackers();
             foreach (var varTracker in _parentContext.Trackers.VarTrackers)
             {
-                // only one store
-                if (varTracker is {LoadAddresses: 0, Loads: 0, Stores: 1})
+                // 1+ store
+                if (varTracker is {LoadAddresses: 0, Loads: 0, Stores: >0})
                 {
-                    var instructionHelper = varTracker.GetInstructionHelper(new EvalContext());
-                    if (instructionHelper is {Instruction: not null})
+                    var evalContext = new EvalContext();
+                    var value = EvalHelper.GetTrackerValue(varTracker, evalContext);
+                    // constant value
+                    if (value?.Removable == true)
                     {
-                        // constant value
-                        if (instructionHelper.IsEvaluable())
+                        var instructionHelpers = varTracker.GetInstructionHelpers(evalContext);
+                        if (instructionHelpers.All(instructionHelper => instructionHelper.IsRemovable))
                         {
-                            var value = instructionHelper.EvalFirst();
-                            if (value?.Removable == true && instructionHelper.IsRemovable)
+                            foreach (var instructionHelper in instructionHelpers)
                             {
-                                RemoveAll([..instructionHelper.AllPush(), instructionHelper.Instruction]);
-                                variablesToRemove.Add(varTracker.VariableDefinition);
-                                converted = true;
+                                RemoveAll([.. instructionHelper.AllPush(), instructionHelper.Instruction]);
                             }
+
+                            variablesToRemove.Add(varTracker.VariableDefinition);
+                            converted = true;
                         }
                     }
                 }
@@ -484,6 +518,7 @@ public class InlineMethodWeaver
             _parentContext.ProcessTargets();
         }
 
+        ConvertIndirectCalls();
         RemoveConstantVarStores();
     }
 
@@ -1166,6 +1201,7 @@ public class InlineMethodWeaver
                         {
                             // inline?
                             var inline = callee.EvalContext.Trackers
+                                .Keys
                                 .OfType<ArgTracker>()
                                 .Select(argTracker => GetResolveDelegate(argTracker.ParameterDefinition))
                                 .Any(attr => attr != null && IsResolveDelegateInline(attr));
