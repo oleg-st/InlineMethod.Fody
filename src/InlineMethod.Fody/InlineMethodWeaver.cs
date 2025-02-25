@@ -571,6 +571,30 @@ public class InlineMethodWeaver
             instruction = nextInstruction;
         }
 
+        // fix exception handler targets
+        foreach (var exceptionHandler in _parentMethod.Body.ExceptionHandlers)
+        {
+            if (_mapper.GetInstructionFromMap(exceptionHandler.TryStart, out var newTryStart))
+            {
+                exceptionHandler.TryStart = newTryStart;
+            }
+
+            if (_mapper.GetInstructionFromMap(exceptionHandler.TryEnd, out var newTryEnd))
+            {
+                exceptionHandler.TryEnd = newTryEnd;
+            }
+
+            if (_mapper.GetInstructionFromMap(exceptionHandler.HandlerStart, out var newHandlerStart))
+            {
+                exceptionHandler.HandlerStart = newHandlerStart;
+            }
+
+            if (_mapper.GetInstructionFromMap(exceptionHandler.HandlerEnd, out var newHandlerEnd))
+            {
+                exceptionHandler.HandlerEnd = newHandlerEnd;
+            }
+        }
+
         // extend short branch instructions if needed
         bool wasExtended;
         do

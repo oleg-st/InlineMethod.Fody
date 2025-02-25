@@ -285,6 +285,13 @@ public class ModuleWeaverTests(ITestOutputHelper testOutputHelper)
     }
 
     [Fact]
+    public void ExceptionHandler2()
+    {
+        var type = ModuleDefinition.GetType($"{Namespace}.ExceptionHandler2");
+        CheckSimpleClass(type);
+    }
+
+    [Fact]
     public void FoldCall()
     {
         var type = ModuleDefinition.GetType($"{Namespace}.FoldCall");
