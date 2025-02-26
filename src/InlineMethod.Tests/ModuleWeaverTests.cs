@@ -297,4 +297,18 @@ public class ModuleWeaverTests(ITestOutputHelper testOutputHelper)
         var type = ModuleDefinition.GetType($"{Namespace}.FoldCall");
         CheckSimpleClass(type);
     }
+
+    [Fact]
+    public void TestDup()
+    {
+        var type = ModuleDefinition.GetType($"{Namespace}.TestDup");
+        CheckSimpleClass(type);
+    }
+
+    [Fact]
+    public void TestSideEffect()
+    {
+        var type = ModuleDefinition.GetType($"{Namespace}.TestSideEffect");
+        CheckSimpleClass(type);
+    }
 }

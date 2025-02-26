@@ -19,7 +19,8 @@ public class PushScanner(Targets targets, Instruction tail)
         public int Depth { get; private set; }
         public bool IsValidDepth => Depth == 1;
         // push value escaped
-        public bool PushEscaped { get; private set; }
+        public bool PushEscaped => PushEscapedInstructions.Count > 0;
+        public List<Instruction> PushEscapedInstructions { get; private set; }
         public Instruction? PrevBelowZero { get; private set; }
 
         private void Process()
@@ -68,7 +69,10 @@ public class PushScanner(Targets targets, Instruction tail)
                 {
                     case 1 when PushInstruction == null:
                         PushInstruction = currentInstruction;
-                        PushEscaped = PrevBelowZero != null;
+                        if (PrevBelowZero != null)
+                        {
+                            PushEscapedInstructions.Add(PrevBelowZero);
+                        }
                         break;
                     case < 1:
                         throw new InstructionWeavingException(First,
@@ -110,23 +114,23 @@ public class PushScanner(Targets targets, Instruction tail)
             IsFinished = true;
         }
 
-        public Sequence(Instruction instruction) : this(instruction, [], 1, null, 0, false, null)
+        public Sequence(Instruction instruction) : this(instruction, [], 1, null, 0, [], null)
         {
         }
 
-        private Sequence(Instruction instruction, List<Instruction> nodes, int stackToConsume, Instruction? result, int depth, bool pushEscaped, Instruction? prevBelowZero)
+        private Sequence(Instruction instruction, List<Instruction> nodes, int stackToConsume, Instruction? result, int depth, List<Instruction> pushEscapedInstructions, Instruction? prevBelowZero)
         {
             Nodes = [.. nodes, instruction];
             _stackToConsume = stackToConsume;
             PushInstruction = result;
             Depth = depth;
-            PushEscaped = pushEscaped;
+            PushEscapedInstructions = [.. pushEscapedInstructions];
             PrevBelowZero = prevBelowZero;
             Process();
         }
 
         public Sequence WithPrev(Instruction instruction)
-             => new(instruction, Nodes, _stackToConsume, PushInstruction, Depth, PushEscaped, PrevBelowZero);
+             => new(instruction, Nodes, _stackToConsume, PushInstruction, Depth, PushEscapedInstructions, PrevBelowZero);
     }
 
     public class Sequences(Targets targets)
@@ -217,6 +221,8 @@ public class PushScanner(Targets targets, Instruction tail)
             OpCodeHelper.IsConv(instruction) ||
             // load arg/var
             OpCodeHelper.IsLoadArg(instruction) || OpCodeHelper.IsLoadLoc(instruction) ||
+            // load addr of arg/var
+            OpCodeHelper.IsLoadArgA(instruction) || OpCodeHelper.IsLoadLocA(instruction) ||
             // branches
             OpCodeHelper.IsConditionalBranch(instruction) || instruction.OpCode.FlowControl == FlowControl.Branch ||
             // eval
@@ -283,6 +289,7 @@ public class PushScanner(Targets targets, Instruction tail)
                     startInstruction = sequence.Last;
                     pushInstruction = sequence.PushInstruction;
                     pushSequences = sequences;
+                    hasSideEffects = sequence.Nodes.Skip(1).Any(HasSideEffects);
                 }
 
                 break;

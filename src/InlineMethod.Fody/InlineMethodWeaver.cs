@@ -134,7 +134,7 @@ public class InlineMethodWeaver
     {
         for (var i = 0; i < _args.Length; i++)
         {
-            _args[i] = new Arg(this, i, _pushInstructions[i].Instruction, _args.Length);
+            _args[i] = new Arg(this, i, _pushInstructions[i], _args.Length);
         }
 
         _argStack = new ArgStack(_args);
@@ -659,9 +659,9 @@ public class InlineMethodWeaver
         }
     }
 
-    private class Arg(InlineMethodWeaver inlineMethodWeaver, int paramIndex, Instruction? pushInstruction, int count)
+    private class Arg(InlineMethodWeaver inlineMethodWeaver, int paramIndex, PushHelper pushHelper, int count)
     {
-        public Instruction? PushInstruction { get; private set; } = pushInstruction;
+        public Instruction? PushInstruction { get; private set; } = pushHelper.Instruction;
         private bool _onlyLoad = true;
         public int Usages { get; private set; }
 
@@ -736,8 +736,9 @@ public class InlineMethodWeaver
             if (CanInline || Usages == 0)
             {
                 Strategy = Usages == 0 ? ArgStrategy.None : ArgStrategy.Inline;
-                _allPushInstructions = OpCodeHelper.GetAllPushInstructions(PushInstruction);
-                if (CanRemovePush)
+                _allPushInstructions = pushHelper.All.ToList();
+                // do not remove side effect
+                if (CanRemovePush && (Strategy == ArgStrategy.Inline || !pushHelper.HasSideEffect))
                 {
                     foreach (var instruction in _allPushInstructions)
                     {
@@ -746,8 +747,15 @@ public class InlineMethodWeaver
                 }
                 else
                 {
-                    // neutralize push instruction
-                    if (PushInstruction == null)
+                    // neutralize push
+                    // push + dup -> push, escaped one time to dup -> remove dup
+                    if (pushHelper.Sequences?.Items.Count == 1 && pushHelper.Sequences.Items[0] is { } sequence &&
+                        sequence.PushEscapedInstructions.Count == 1 && sequence.PushEscapedInstructions[0] is { } escapedInstruction && 
+                        escapedInstruction.OpCode.Code == Code.Dup)
+                    {
+                        inlineMethodWeaver.Remove(escapedInstruction);
+                    }
+                    else if (PushInstruction == null || pushHelper.NoPushOrEscaped)
                     {
                         InsertConsumeTopArg(Instruction.Create(OpCodes.Pop));
                     }
@@ -799,7 +807,7 @@ public class InlineMethodWeaver
             }
         }
 
-        private bool CanRemovePush => PushInstruction != null && (PushInstruction.OpCode.StackBehaviourPop == StackBehaviour.Pop0 || CanInline);
+        private bool CanRemovePush => PushInstruction != null && (pushHelper.IsRemovable || CanInline);
 
         private bool CanInline => _onlyLoad && (_hasInlineParameter || CanInlineInstruction(PushInstruction, Usages));
 

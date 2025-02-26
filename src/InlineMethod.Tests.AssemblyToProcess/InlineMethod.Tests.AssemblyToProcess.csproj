@@ -9,6 +9,10 @@
     <Optimize>True</Optimize>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
+    <DebugSymbols>true</DebugSymbols>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="System.Memory" Version="4.5.5" />
   </ItemGroup>

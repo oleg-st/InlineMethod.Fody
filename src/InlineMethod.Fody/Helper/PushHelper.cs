@@ -13,6 +13,8 @@ public class PushHelper(Instruction? instruction, PushScanner.Sequences? sequenc
     public PushScanner.Sequences? Sequences { get; } = sequences;
     public bool IsEvaluable => Sequences != null;
     public bool IsRemovable => All.Any();
+    public bool NoPushOrEscaped => Sequences == null || Sequences.Items.Count == 0 || Sequences.Items.All(sequence => sequence.PushEscaped);
+    public bool HasSideEffect => hasSideEffects;
 
     // all instructions for removing
     public IEnumerable<Instruction> All
