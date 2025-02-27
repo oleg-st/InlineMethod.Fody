@@ -306,6 +306,13 @@ public class ModuleWeaverTests(ITestOutputHelper testOutputHelper)
     }
 
     [Fact]
+    public void TestDup2()
+    {
+        var type = ModuleDefinition.GetType($"{Namespace}.TestDup2");
+        CheckSimpleClass(type);
+    }
+
+    [Fact]
     public void TestSideEffect()
     {
         var type = ModuleDefinition.GetType($"{Namespace}.TestSideEffect");

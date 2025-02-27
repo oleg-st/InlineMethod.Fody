@@ -719,7 +719,7 @@ public class InlineMethodWeaver
                 Strategy = ArgStrategy.KeepOnStack;
                 if (Usages > 1)
                 {
-                    if (HasPush && PushInstruction.GetPushCount() == 1)
+                    if (HasPush && PushInstruction.GetPushCount() == 1 && !pushHelper.NoPushOrEscaped)
                     {
                         inlineMethodWeaver.InsertAfter(PushInstruction!, Instruction.Create(OpCodes.Dup));
                     }
@@ -749,9 +749,10 @@ public class InlineMethodWeaver
                 {
                     // neutralize push
                     // push + dup -> push, escaped one time to dup -> remove dup
-                    if (pushHelper.Sequences?.Items.Count == 1 && pushHelper.Sequences.Items[0] is { } sequence &&
-                        sequence.PushEscapedInstructions.Count == 1 && sequence.PushEscapedInstructions[0] is { } escapedInstruction && 
-                        escapedInstruction.OpCode.Code == Code.Dup)
+                    if (pushHelper.Sequences?.Items.Count == 1 && pushHelper.Sequences.Items[0] is
+                        {
+                            PushEscapedInstructions.Count: 1
+                        } sequence && sequence.PushEscapedInstructions[0] is {OpCode.Code: Code.Dup} escapedInstruction)
                     {
                         inlineMethodWeaver.Remove(escapedInstruction);
                     }
@@ -777,7 +778,7 @@ public class InlineMethodWeaver
 
             // place store loc
             var storeLoc = OpCodeHelper.CreateStoreLoc(_variableDefinition);
-            if (PushInstruction == null)
+            if (PushInstruction == null || pushHelper.NoPushOrEscaped)
             {
                 InsertConsumeTopArg(storeLoc);
             }
