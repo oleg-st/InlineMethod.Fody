@@ -80,6 +80,6 @@ public class InstructionHelper
 
     public IEnumerable<Instruction> AllPush() =>
         PushInstructions
-            .Select(i => i.All)
+            .Select(i => i.AllForRemove)
             .SelectMany(i => i);
 }

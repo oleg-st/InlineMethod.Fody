@@ -12,12 +12,18 @@ public class PushHelper(Instruction? instruction, PushScanner.Sequences? sequenc
     // instruction sequences to evaluate
     public PushScanner.Sequences? Sequences { get; } = sequences;
     public bool IsEvaluable => Sequences != null;
-    public bool IsRemovable => All.Any();
+    public bool IsRemovable => AllForRemove.Any();
     public bool NoPushOrEscaped => Sequences == null || Sequences.Items.Count == 0 || Sequences.Items.All(sequence => sequence.PushEscaped);
-    public bool HasSideEffect => hasSideEffects;
+
+    // all push instructions
+    public IEnumerable<Instruction> AllPush =>
+        Sequences is {Items.Count: 1} && Sequences.Items[0] is
+            {PushInstruction: not null} sequence
+            ? sequence.Nodes.SkipWhile(p => p != sequence.PushInstruction).Reverse()
+            : [];
 
     // all instructions for removing
-    public IEnumerable<Instruction> All
+    public IEnumerable<Instruction> AllForRemove
     {
         get
         {
@@ -28,10 +34,19 @@ public class PushHelper(Instruction? instruction, PushScanner.Sequences? sequenc
 
             if (Sequences.Items.Count == 1)
             {
+                // push + dup -> remove dup
                 var sequence = Sequences.Items[0];
-                return sequence.PushInstruction != null && !sequence.PushEscaped
-                    ? sequence.Nodes.SkipWhile(p => p != sequence.PushInstruction).Reverse()
-                    : [];
+                if (sequence is { PushEscapedInstructions.Count: 1 } && sequence.PushEscapedInstructions[0] is { OpCode.Code: Code.Dup } escapedInstruction)
+                {
+                    return [escapedInstruction];
+                }
+
+                if (sequence.PushEscaped)
+                {
+                    return [];
+                }
+
+                return AllPush;
             }
 
             if (hasSideEffects)

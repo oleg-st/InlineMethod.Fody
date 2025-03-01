@@ -736,11 +736,12 @@ public class InlineMethodWeaver
             if (CanInline || Usages == 0)
             {
                 Strategy = Usages == 0 ? ArgStrategy.None : ArgStrategy.Inline;
-                _allPushInstructions = pushHelper.All.ToList();
+                _allPushInstructions = pushHelper.AllPush.ToList();
                 // do not remove side effect
-                if (CanRemovePush && (Strategy == ArgStrategy.Inline || !pushHelper.HasSideEffect))
+                var forRemove = pushHelper.AllForRemove.ToList();
+                if (forRemove.Any() && (Strategy == ArgStrategy.Inline || !forRemove.Any(OpCodeHelper.HasSideEffects)))
                 {
-                    foreach (var instruction in _allPushInstructions)
+                    foreach (var instruction in forRemove)
                     {
                         inlineMethodWeaver.Remove(instruction);
                     }
@@ -748,15 +749,7 @@ public class InlineMethodWeaver
                 else
                 {
                     // neutralize push
-                    // push + dup -> push, escaped one time to dup -> remove dup
-                    if (pushHelper.Sequences?.Items.Count == 1 && pushHelper.Sequences.Items[0] is
-                        {
-                            PushEscapedInstructions.Count: 1
-                        } sequence && sequence.PushEscapedInstructions[0] is {OpCode.Code: Code.Dup} escapedInstruction)
-                    {
-                        inlineMethodWeaver.Remove(escapedInstruction);
-                    }
-                    else if (PushInstruction == null || pushHelper.NoPushOrEscaped)
+                    if (PushInstruction == null || pushHelper.NoPushOrEscaped)
                     {
                         InsertConsumeTopArg(Instruction.Create(OpCodes.Pop));
                     }
@@ -807,8 +800,6 @@ public class InlineMethodWeaver
                     break;
             }
         }
-
-        private bool CanRemovePush => PushInstruction != null && (pushHelper.IsRemovable || CanInline);
 
         private bool CanInline => _onlyLoad && (_hasInlineParameter || CanInlineInstruction(PushInstruction, Usages));
 
@@ -1102,7 +1093,7 @@ public class InlineMethodWeaver
                 // replace first argument (delegate -> instance), replace method (Invoke -> Method)
                 if (first.IsRemovable)
                 {
-                    var instanceAllInstructions = first.All.ToList();
+                    var instanceAllInstructions = first.AllForRemove.ToList();
                     // push delegate, push args, call Delegate::Invoke -> push methodInstance, push args, call Method
                     InsertAfter(instanceAllInstructions.Last(),
                         OpCodeHelper.Clone(resolveDelegate.MethodInstanceInstruction));

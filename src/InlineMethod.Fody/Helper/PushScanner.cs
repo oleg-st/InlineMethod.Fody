@@ -212,55 +212,6 @@ public class PushScanner(Targets targets, Instruction tail)
         }
     }
 
-    private bool HasSideEffects(Instruction instruction)
-    {
-        if (
-            // const
-            OpCodeHelper.IsLoadConst(instruction) || 
-            // conv
-            OpCodeHelper.IsConv(instruction) ||
-            // load arg/var
-            OpCodeHelper.IsLoadArg(instruction) || OpCodeHelper.IsLoadLoc(instruction) ||
-            // load addr of arg/var
-            OpCodeHelper.IsLoadArgA(instruction) || OpCodeHelper.IsLoadLocA(instruction) ||
-            // branches
-            OpCodeHelper.IsConditionalBranch(instruction) || instruction.OpCode.FlowControl == FlowControl.Branch ||
-            // eval
-            instruction.OpCode.Code is Code.Dup or Code.Pop or Code.Ldftn or Code.Add or Code.Sub or Code.Mul
-                or Code.Div
-                or Code.Div_Un or Code.Neg or Code.Not or Code.Or or Code.And or Code.Xor or Code.Shl or Code.Shr
-                or Code.Shr_Un or Code.Ceq or Code.Clt or Code.Clt_Un or Code.Cgt or Code.Cgt_Un
-           )
-        {
-            return false;
-        }
-
-        // load/store static fields (CompilerGenerated + Delegate)
-        if (
-            (OpCodeHelper.IsLoadSFld(instruction) || OpCodeHelper.IsStoreSFld(instruction)) &&
-            instruction.Operand is FieldReference fieldReference)
-        {
-            var declaringType = fieldReference.DeclaringType.Resolve();
-            if (declaringType.IsSealed && TypeHelper.IsCompilerGenerated(declaringType))
-            {
-                var fieldType = fieldReference.FieldType.Resolve();
-                if (TypeHelper.IsDelegateType(fieldType) || TypeHelper.IsCompilerGenerated(fieldType))
-                {
-                    return false;
-                }
-            }
-        }
-
-        // new Delegate()
-        if (instruction.OpCode.Code == Code.Newobj && instruction.Operand is MethodReference method &&
-            TypeHelper.IsDelegateType(method.DeclaringType))
-        {
-            return false;
-        }
-
-        return true;
-    }
-
     private PushHelper Get(ref Instruction? currentInstruction)
     {
         if (currentInstruction == null)
@@ -289,7 +240,7 @@ public class PushScanner(Targets targets, Instruction tail)
                     startInstruction = sequence.Last;
                     pushInstruction = sequence.PushInstruction;
                     pushSequences = sequences;
-                    hasSideEffects = sequence.Nodes.Skip(1).Any(HasSideEffects);
+                    hasSideEffects = sequence.Nodes.Skip(1).Any(OpCodeHelper.HasSideEffects);
                 }
 
                 break;
@@ -300,7 +251,7 @@ public class PushScanner(Targets targets, Instruction tail)
                 // try to extend to common instruction, check some side effects
                 if (sequences.Extend())
                 {
-                    hasSideEffects = sequences.Items.SelectMany(s => s.Nodes.Skip(1)).Any(HasSideEffects);
+                    hasSideEffects = sequences.Items.SelectMany(s => s.Nodes.Skip(1)).Any(OpCodeHelper.HasSideEffects);
                     startInstruction = sequences.Items[0].Last;
                     pushSequences = sequences;
                 }
