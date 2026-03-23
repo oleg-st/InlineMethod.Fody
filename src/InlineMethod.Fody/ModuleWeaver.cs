@@ -1,6 +1,9 @@
-﻿using System.Collections.Generic;
+using System;
+using System.Collections.Generic;
 using System.Linq;
+
 using Fody;
+
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 
@@ -22,7 +25,17 @@ public class ModuleWeaver : BaseModuleWeaver
             {
                 ProcessMethod(calledMethodDefinition);
                 var inlineMethodWeaver = new InlineMethodWeaver(this, instruction, method, calledMethodDefinition);
-                inlineMethodWeaver.Process();
+                try
+                {
+                    inlineMethodWeaver.Process();
+                }
+                catch (Exception)
+                {
+                    WriteMessage("Error occured when process call instruction: \n" +
+                        $"\tCaller: {method.FullName} (IL offset: 0x{instruction.Offset:X8})\n" +
+                        $"\tCallee: {calledMethod.FullName}", MessageImportance.High);
+                    throw;
+                }
             }
         }
     }
