@@ -90,11 +90,16 @@ public sealed class StaticFieldTracker : Tracker
 {
     public FieldDefinition FieldDefinition { get; }
 
+    // the stores we can see give the value of every load of the field
+    private readonly bool _isValueKnown;
+
     public StaticFieldTracker(Context context, FieldDefinition fieldDefinition) : base(context)
     {
         FieldDefinition = fieldDefinition;
-        // field is static -> scan static constructor
-        if (FieldDefinition is {IsStatic: true})
+        var isConstant = IsConstantField(fieldDefinition);
+        _isValueKnown = isConstant || IsCompilerGeneratedCacheField(fieldDefinition);
+        // field is a constant static field -> scan static constructor
+        if (isConstant)
         {
             var staticConstructor = FieldDefinition.DeclaringType.Methods.FirstOrDefault(m => m.IsStatic && m.IsConstructor);
             if (staticConstructor is {HasBody: true})
@@ -109,6 +114,21 @@ public sealed class StaticFieldTracker : Tracker
             }
         }
     }
+
+    // a static readonly field can only be stored by the static constructor of its declaring type,
+    // so a constant store there is the value that every load of the field observes
+    private static bool IsConstantField(FieldDefinition? fieldDefinition)
+        // a mutable field can be assigned at any time from anywhere, so a store in the static
+        // constructor says nothing about the value a load will see
+        => fieldDefinition is {IsStatic: true, IsInitOnly: true} &&
+           // a type that is not beforefieldinit runs its static constructor on the first access to
+           // one of its static fields, so folding away the only access in a method would skip it
+           fieldDefinition.DeclaringType.IsBeforeFieldInit;
+
+    // a lambda cache field is stored once, with one value, by compiler-generated code, so the
+    // store in this method body gives the value of every load, whichever store actually ran
+    private static bool IsCompilerGeneratedCacheField(FieldDefinition? fieldDefinition)
+        => fieldDefinition is {IsStatic: true} && TypeHelper.IsCompilerGeneratedCacheField(fieldDefinition);
 
     private readonly List<Instruction> _storeInstructions = [];
 
@@ -125,7 +145,7 @@ public sealed class StaticFieldTracker : Tracker
         OpCodeHelper.IsLoadSFld(instruction);
 
     public override ICollection<InstructionHelper> GetInstructionHelpers(EvalContext evalContext)
-        => Stores > 0
+        => _isValueKnown && Stores > 0
             ? _storeInstructions
                 .Select(storeInstruction => new InstructionHelper(Context, evalContext, storeInstruction)).ToList()
             : [];
