@@ -353,17 +353,10 @@ internal static class OpCodeHelper
         // load/store static fields (CompilerGenerated + Delegate)
         if (
             (OpCodeHelper.IsLoadSFld(instruction) || OpCodeHelper.IsStoreSFld(instruction)) &&
-            instruction.Operand is FieldReference fieldReference)
+            instruction.Operand is FieldReference fieldReference &&
+            TypeHelper.IsCompilerGeneratedCacheField(fieldReference))
         {
-            var declaringType = fieldReference.DeclaringType.Resolve();
-            if (declaringType.IsSealed && TypeHelper.IsCompilerGenerated(declaringType))
-            {
-                var fieldType = fieldReference.FieldType.Resolve();
-                if (TypeHelper.IsDelegateType(fieldType) || TypeHelper.IsCompilerGenerated(fieldType))
-                {
-                    return false;
-                }
-            }
+            return false;
         }
 
         // new Delegate()
