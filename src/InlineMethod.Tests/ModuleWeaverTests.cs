@@ -14,12 +14,13 @@ namespace InlineMethod.Tests;
 public class ModuleWeaverTests(ITestOutputHelper testOutputHelper)
 {
     private static readonly ModuleDefinition ModuleDefinition;
+    private static readonly TestResult TestResult;
     private const string Namespace = "InlineMethod.Tests.AssemblyToProcess";
 
     static ModuleWeaverTests()
     {
         var weavingTask = new ModuleWeaver();
-        var testResult = weavingTask.ExecuteTestRun("InlineMethod.Tests.AssemblyToProcess.dll", false);
+        TestResult = weavingTask.ExecuteTestRun("InlineMethod.Tests.AssemblyToProcess.dll", false);
 
         var readerParameters = new ReaderParameters
         {
@@ -28,7 +29,7 @@ public class ModuleWeaverTests(ITestOutputHelper testOutputHelper)
             ReadWrite = false,
             ReadSymbols = true,
         };
-        ModuleDefinition = ModuleDefinition.ReadModule(testResult.AssemblyPath, readerParameters);
+        ModuleDefinition = ModuleDefinition.ReadModule(TestResult.AssemblyPath, readerParameters);
     }
 
     private MethodDefinition? GetMethod(TypeDefinition type, string name) 
@@ -323,6 +324,71 @@ public class ModuleWeaverTests(ITestOutputHelper testOutputHelper)
     public void TestSideEffect()
     {
         var type = ModuleDefinition.GetType($"{Namespace}.TestSideEffect");
+        CheckSimpleClass(type);
+    }
+
+    [Fact]
+    public void StaticFieldMutable()
+    {
+        var type = ModuleDefinition.GetType($"{Namespace}.StaticFieldMutable");
+        CheckSimpleClass(type);
+    }
+
+    [Fact]
+    public void StaticFieldMutableFalse()
+    {
+        var type = ModuleDefinition.GetType($"{Namespace}.StaticFieldMutableFalse");
+        CheckSimpleClass(type);
+    }
+
+    // the woven method must still read the field at run time, in both directions
+    [Fact]
+    public void StaticFieldMutableRuntime()
+    {
+        var type = TestResult.Assembly.GetType($"{Namespace}.StaticFieldMutable");
+        Assert.NotNull(type);
+        var caller = type.GetMethod("Caller");
+        var ready = type.GetField("Ready");
+        Assert.NotNull(caller);
+        Assert.NotNull(ready);
+
+        ready.SetValue(null, false);
+        Assert.Equal(0, caller.Invoke(null, [21]));
+
+        ready.SetValue(null, true);
+        Assert.Equal(42, caller.Invoke(null, [21]));
+    }
+
+    [Fact]
+    public void StaticFieldStoredInBody()
+    {
+        var type = ModuleDefinition.GetType($"{Namespace}.StaticFieldStoredInBody");
+        CheckSimpleClass(type);
+    }
+
+    [Fact]
+    public void StaticFieldStoredInBodyRuntime()
+    {
+        var type = TestResult.Assembly.GetType($"{Namespace}.StaticFieldStoredInBody");
+        Assert.NotNull(type);
+        var caller = type.GetMethod("Caller");
+        Assert.NotNull(caller);
+
+        // Flip() clears the flag that Caller just set, so the guard returns 0
+        Assert.Equal(0, caller.Invoke(null, [21]));
+    }
+
+    [Fact]
+    public void StaticFieldNotBeforeFieldInit()
+    {
+        var type = ModuleDefinition.GetType($"{Namespace}.StaticFieldNotBeforeFieldInit");
+        CheckSimpleClass(type);
+    }
+
+    [Fact]
+    public void FoldStaticFieldReadOnly()
+    {
+        var type = ModuleDefinition.GetType($"{Namespace}.FoldStaticFieldReadOnly");
         CheckSimpleClass(type);
     }
 }
