@@ -96,27 +96,34 @@ public sealed class StaticFieldTracker : Tracker
     public StaticFieldTracker(Context context, FieldDefinition fieldDefinition) : base(context)
     {
         FieldDefinition = fieldDefinition;
-        var isConstant = IsConstantField(fieldDefinition);
-        _isValueKnown = isConstant || IsCompilerGeneratedCacheField(fieldDefinition);
-        // field is a constant static field -> scan static constructor
-        if (isConstant)
+        var staticConstructor = fieldDefinition is {IsStatic: true}
+            ? fieldDefinition.DeclaringType.Methods.FirstOrDefault(m => m.IsStatic && m.IsConstructor)
+            : null;
+
+        // a cache field holds one value written by one store, so it does not matter where the
+        // store sits; any other field is only pinned down by its static constructor's stores once
+        // nothing can read it ahead of them
+        _isValueKnown = TypeHelper.IsSingleAssignmentCacheField(fieldDefinition) ||
+                        (IsConstantField(fieldDefinition) &&
+                         IsSettledInStaticConstructor(staticConstructor, fieldDefinition));
+
+        // the stores that give the value are the ones in the static constructor
+        if (!_isValueKnown || staticConstructor is not {HasBody: true})
         {
-            var staticConstructor = FieldDefinition.DeclaringType.Methods.FirstOrDefault(m => m.IsStatic && m.IsConstructor);
-            if (staticConstructor is {HasBody: true})
+            return;
+        }
+
+        foreach (var instruction in staticConstructor.Body.Instructions)
+        {
+            if (instruction.Operand is FieldReference opFieldReference && opFieldReference.Resolve() == fieldDefinition)
             {
-                foreach (var instruction in staticConstructor.Body.Instructions)
-                {
-                    if (instruction.Operand is FieldReference opFieldReference && opFieldReference.Resolve() == fieldDefinition)
-                    {
-                        TrackInstruction(instruction);
-                    }
-                }
+                TrackInstruction(instruction);
             }
         }
     }
 
     // a static readonly field can only be stored by the static constructor of its declaring type,
-    // so a constant store there is the value that every load of the field observes
+    // so no other method body can add to the stores we find there
     private static bool IsConstantField(FieldDefinition? fieldDefinition)
         // a mutable field can be assigned at any time from anywhere, so a store in the static
         // constructor says nothing about the value a load will see
@@ -125,10 +132,53 @@ public sealed class StaticFieldTracker : Tracker
            // one of its static fields, so folding away the only access in a method would skip it
            fieldDefinition.DeclaringType.IsBeforeFieldInit;
 
-    // a lambda cache field is stored once, with one value, by compiler-generated code, so the
-    // store in this method body gives the value of every load, whichever store actually ran
-    private static bool IsCompilerGeneratedCacheField(FieldDefinition? fieldDefinition)
-        => fieldDefinition is {IsStatic: true} && TypeHelper.IsCompilerGeneratedCacheField(fieldDefinition);
+    // Whether the static constructor's stores of the field give the value a load outside it sees.
+    //
+    // The stores are collected as a set, with no order among them, which is only the field's
+    // settled value once nothing can read the field before the last of them. While the static
+    // constructor is still running the field still holds its default, so a load reached from
+    // there would be handed a value that has not been assigned yet.
+    private static bool IsSettledInStaticConstructor(MethodDefinition? staticConstructor,
+        FieldDefinition fieldDefinition)
+    {
+        if (staticConstructor is not {HasBody: true})
+        {
+            return true;
+        }
+
+        var instructions = staticConstructor.Body.Instructions;
+        var lastStore = -1;
+        for (var i = 0; i < instructions.Count; i++)
+        {
+            if (OpCodeHelper.IsStoreSFld(instructions[i]) &&
+                (instructions[i].Operand as FieldReference)?.Resolve() == fieldDefinition)
+            {
+                lastStore = i;
+            }
+        }
+
+        for (var i = 0; i < lastStore; i++)
+        {
+            var instruction = instructions[i];
+
+            // control leaves the static constructor and can read the field on its way
+            if (instruction.OpCode.Code is Code.Call or Code.Callvirt or Code.Calli or Code.Newobj)
+            {
+                return false;
+            }
+
+            // the static constructor reading its own type's state before this field has settled:
+            // the value being stored may itself come from a field that is only assigned later
+            if (instruction.OpCode.Code is Code.Ldsfld or Code.Ldsflda &&
+                instruction.Operand is FieldReference operandField &&
+                operandField.DeclaringType.Resolve() == fieldDefinition.DeclaringType)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
 
     private readonly List<Instruction> _storeInstructions = [];
 
