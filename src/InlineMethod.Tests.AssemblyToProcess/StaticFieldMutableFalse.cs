@@ -8,7 +8,9 @@ class StaticFieldMutableFalse
 
     // Roslyn omits an initializer that stores a default value, so `Ready = false` on its own
     // emits no static constructor and there is no store for the weaver to find. It takes a
-    // second field with an initializer to emit one.
+    // second field with an initializer to emit one. Do not remove this as unused: without it the
+    // case has nothing to fold and passes whatever the weaver does. ModuleWeaverTests calls
+    // CheckStaticConstructorStores to fail loudly rather than silently if that ever happens.
     public static int Count = 1;
 
     [Inline]
