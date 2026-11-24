@@ -12,7 +12,13 @@ public class PushHelper(Instruction? instruction, PushScanner.Sequences? sequenc
     // instruction sequences to evaluate
     public PushScanner.Sequences? Sequences { get; } = sequences;
     public bool IsEvaluable => Sequences != null;
-    public bool IsRemovable => AllForRemove.Any();
+
+    // Removing only a dup preserves the original evaluation, including its side effects.
+    public bool IsRemovable => EscapedDup != null || (!hasSideEffects && AllForRemove.Any());
+    private Instruction? EscapedDup =>
+        Sequences is { Items.Count: 1 } && Sequences.Items[0].PushEscapedInstructions is { Count: 1 } escaped &&
+        escaped[0].OpCode.Code == Code.Dup ? escaped[0] : null;
+
     public bool NoPushOrEscaped => Sequences == null || Sequences.Items.Count == 0 || Sequences.Items.All(sequence => sequence.PushEscaped);
 
     // all push instructions
@@ -36,7 +42,7 @@ public class PushHelper(Instruction? instruction, PushScanner.Sequences? sequenc
             {
                 // push + dup -> remove dup
                 var sequence = Sequences.Items[0];
-                if (sequence is { PushEscapedInstructions.Count: 1 } && sequence.PushEscapedInstructions[0] is { OpCode.Code: Code.Dup } escapedInstruction)
+                if (EscapedDup is { } escapedInstruction)
                 {
                     return [escapedInstruction];
                 }

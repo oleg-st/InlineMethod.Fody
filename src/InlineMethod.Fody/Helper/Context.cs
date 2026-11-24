@@ -6,6 +6,7 @@ namespace InlineMethod.Fody.Helper;
 
 public class Context(MethodDefinition method, InstructionMapper mapper)
 {
+    internal DelegateCacheFields DelegateCaches { get; set; } = DelegateCacheFields.Empty;
     public Trackers Trackers { get; } = new();
     public Targets Targets { get; } = new(method.Body.Instructions);
     public MethodDefinition Method => method;
@@ -13,6 +14,9 @@ public class Context(MethodDefinition method, InstructionMapper mapper)
     public readonly MethodParameters Parameters = new(method);
 
     public Tracker? GetTracker(Instruction instruction) => Trackers.Get(this, instruction);
+
+    internal PushHelper[] ScanPushes(Instruction instruction) =>
+        new PushScanner(Targets, instruction) { DelegateCaches = DelegateCaches }.Scan();
 
     public void Process(Instruction? outer = null)
     {

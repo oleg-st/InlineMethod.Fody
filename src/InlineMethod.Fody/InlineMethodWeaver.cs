@@ -68,10 +68,9 @@ public class InlineMethodWeaver
         _method = method;
         _il = _parentMethod.Body.GetILProcessor();
         // _moduleWeaver.WriteWarning($"Method {_method.Name} to {_parentMethod.Name}");
-        _parentContext = new Context(_parentMethod, _mapper);
+        _parentContext = new Context(_parentMethod, _mapper) { DelegateCaches = moduleWeaver.DelegateCaches };
         _parentContext.ProcessTargets();
-        var pushScanner = new PushScanner(_parentContext.Targets, _callInstruction);
-        _pushInstructions = pushScanner.Scan();
+        _pushInstructions = _parentContext.ScanPushes(_callInstruction);
 
         // parameters
         _parameters = new MethodParameters(_method);
@@ -350,12 +349,17 @@ public class InlineMethodWeaver
                         }
                         else
                         {
+                            // Inverting a relational comparison needs different branches
+                            // for integers and floating-point NaN. Without operand types,
+                            // keep the comparison followed by brfalse intact.
                             if (instructionHelper.First is
-                                {OpCode.Code: Code.Ceq or Code.Clt or Code.Clt_Un or Code.Cgt or Code.Cgt_Un})
+                                {OpCode.Code: Code.Ceq or Code.Clt or Code.Clt_Un or Code.Cgt or Code.Cgt_Un} comparison &&
+                                (instruction.OpCode.Code is Code.Brtrue or Code.Brtrue_S ||
+                                 comparison.OpCode.Code == Code.Ceq))
                             {
-                                Remove(instructionHelper.First);
+                                Remove(comparison);
                                 instruction.OpCode =
-                                    OpCodeHelper.ConvertUnaryConditional(instruction, instructionHelper.First);
+                                    OpCodeHelper.ConvertUnaryConditional(instruction, comparison);
                                 converted = true;
                             }
                         }
@@ -739,7 +743,7 @@ public class InlineMethodWeaver
                 _allPushInstructions = pushHelper.AllPush.ToList();
                 // do not remove side effect
                 var forRemove = pushHelper.AllForRemove.ToList();
-                if (forRemove.Any() && (Strategy == ArgStrategy.Inline || !forRemove.Any(OpCodeHelper.HasSideEffects)))
+                if (forRemove.Any() && (Strategy == ArgStrategy.Inline || pushHelper.IsRemovable))
                 {
                     foreach (var instruction in forRemove)
                     {
@@ -1180,8 +1184,8 @@ public class InlineMethodWeaver
             return;
         }
 
-        var parentContext = new Context(_parentMethod, new InstructionMapper());
-        var context = new Context(_method, new InstructionMapper());
+        var parentContext = new Context(_parentMethod, new InstructionMapper()) { DelegateCaches = _moduleWeaver.DelegateCaches };
+        var context = new Context(_method, new InstructionMapper()) { DelegateCaches = _moduleWeaver.DelegateCaches };
         parentContext.Process(_callInstruction);
         context.Process();
 

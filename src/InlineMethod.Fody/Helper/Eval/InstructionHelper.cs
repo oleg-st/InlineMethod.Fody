@@ -62,8 +62,7 @@ public class InstructionHelper
         _context = context;
         _evalContext = evalContext;
         Instruction = instruction;
-        var pushScanner = new PushScanner(_context.Targets, Instruction);
-        PushInstructions = pushScanner.Scan();
+        PushInstructions = context.ScanPushes(instruction);
     }
 
     public InstructionHelper(Context context, EvalContext evalContext, PushHelper[] pushHelpers)

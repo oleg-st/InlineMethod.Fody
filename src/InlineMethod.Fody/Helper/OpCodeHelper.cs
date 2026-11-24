@@ -327,7 +327,7 @@ internal static class OpCodeHelper
             _ => throw new NotSupportedException(),
         };
 
-    public static bool HasSideEffects(Instruction instruction)
+    public static bool HasSideEffects(Instruction instruction, DelegateCacheFields delegateCaches)
     {
         if (
             // const
@@ -350,20 +350,10 @@ internal static class OpCodeHelper
             return false;
         }
 
-        // load/store static fields (CompilerGenerated + Delegate)
-        if (
-            (OpCodeHelper.IsLoadSFld(instruction) || OpCodeHelper.IsStoreSFld(instruction)) &&
-            instruction.Operand is FieldReference fieldReference)
+        if ((IsLoadSFld(instruction) || IsStoreSFld(instruction)) &&
+            instruction.Operand is FieldReference fieldReference && delegateCaches.Contains(fieldReference))
         {
-            var declaringType = fieldReference.DeclaringType.Resolve();
-            if (declaringType.IsSealed && TypeHelper.IsCompilerGenerated(declaringType))
-            {
-                var fieldType = fieldReference.FieldType.Resolve();
-                if (TypeHelper.IsDelegateType(fieldType) || TypeHelper.IsCompilerGenerated(fieldType))
-                {
-                    return false;
-                }
-            }
+            return false;
         }
 
         // new Delegate()

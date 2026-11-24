@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 
 using Fody;
+using InlineMethod.Fody.Helper;
 
 using Mono.Cecil;
 using Mono.Cecil.Cil;
@@ -11,6 +12,8 @@ namespace InlineMethod.Fody;
 
 public class ModuleWeaver : BaseModuleWeaver
 {
+    internal DelegateCacheFields DelegateCaches { get; private set; } = DelegateCacheFields.Empty;
+
     private CustomAttribute? GetInlineAttribute(MethodDefinition method)
         => method.CustomAttributes.FirstOrDefault(i => i.AttributeType.FullName == "InlineMethod.InlineAttribute");
 
@@ -64,6 +67,7 @@ public class ModuleWeaver : BaseModuleWeaver
     {
         WriteMessage("InlineMethod execute", MessageImportance.High);
 
+        DelegateCaches = DelegateCacheFields.Analyze(ModuleDefinition);
         var inlineMethods = new List<MethodDefinition>();
         // inline methods
         foreach (var type in ModuleDefinition.GetTypes())

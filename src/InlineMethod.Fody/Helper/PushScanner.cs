@@ -8,6 +8,10 @@ namespace InlineMethod.Fody.Helper;
 
 public class PushScanner(Targets targets, Instruction tail)
 {
+    internal DelegateCacheFields DelegateCaches { get; set; } = DelegateCacheFields.Empty;
+
+    private bool HasSideEffects(Instruction instruction) => OpCodeHelper.HasSideEffects(instruction, DelegateCaches);
+
     public class Sequence
     {
         public List<Instruction> Nodes { get; }
@@ -240,7 +244,7 @@ public class PushScanner(Targets targets, Instruction tail)
                     startInstruction = sequence.Last;
                     pushInstruction = sequence.PushInstruction;
                     pushSequences = sequences;
-                    hasSideEffects = sequence.Nodes.Skip(1).Any(OpCodeHelper.HasSideEffects);
+                    hasSideEffects = sequence.Nodes.Skip(1).Any(HasSideEffects);
                 }
 
                 break;
@@ -251,7 +255,7 @@ public class PushScanner(Targets targets, Instruction tail)
                 // try to extend to common instruction, check some side effects
                 if (sequences.Extend())
                 {
-                    hasSideEffects = sequences.Items.SelectMany(s => s.Nodes.Skip(1)).Any(OpCodeHelper.HasSideEffects);
+                    hasSideEffects = sequences.Items.SelectMany(s => s.Nodes.Skip(1)).Any(HasSideEffects);
                     startInstruction = sequences.Items[0].Last;
                     pushSequences = sequences;
                 }

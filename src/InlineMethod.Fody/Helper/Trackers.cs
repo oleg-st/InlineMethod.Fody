@@ -151,7 +151,8 @@ public class Trackers
             return varTracker;
         }
 
-        if (instruction.Operand is FieldReference fieldReference)
+        // Ordinary static loads may observe mutations or trigger a type initializer.
+        if (instruction.Operand is FieldReference fieldReference && context.DelegateCaches.Contains(fieldReference))
         {
             var fieldDefinition = fieldReference.Resolve();
             if (!_staticFieldTrackers.TryGetValue(fieldDefinition, out var fieldTracker))
