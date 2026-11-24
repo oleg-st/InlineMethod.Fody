@@ -47,16 +47,16 @@ public class ModuleWeaver : BaseModuleWeaver
             return;
         }
 
-        var instruction = method.Body.Instructions.FirstOrDefault();
-        while (instruction != null)
+        // Folding a branch can remove the next instruction, including later call sites.
+        // Keep their original order and check which ones survived each substitution.
+        var instructions = method.Body.Instructions;
+        foreach (var instruction in instructions.ToArray())
         {
-            var nextInstruction = instruction.Next;
-            if (instruction.OpCode.Code is Code.Call or Code.Callvirt)
+            if (instruction.OpCode.Code is Code.Call or Code.Callvirt &&
+                (instruction.Previous != null || instruction == instructions[0]))
             {
                 ProcessCallInstruction(instruction, method);
             }
-
-            instruction = nextInstruction;
         }
     }
 

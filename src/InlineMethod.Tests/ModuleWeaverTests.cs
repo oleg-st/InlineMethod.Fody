@@ -97,6 +97,14 @@ public class ModuleWeaverTests(ITestOutputHelper testOutputHelper)
     }
 
     [Fact]
+    public void FoldRepeatedGetter()
+    {
+        var type = ModuleDefinition.GetType($"{Namespace}.FoldRepeatedGetter");
+        CheckSimpleClass(type);
+        Assert.Null(GetMethod(type, "get_Enabled"));
+    }
+
+    [Fact]
     public void SimpleRemovePrivate()
     {
         var type = ModuleDefinition.GetType($"{Namespace}.SimpleRemovePrivate");
